@@ -17,6 +17,8 @@ Each framework includes synthetic data generation, parameter inference methods a
 | `abm_to_abm.ipynb`       | Agent-Based Model calibration with ABC and history matching. |
 | `seir_to_seir.py`        | SEIR compartmental model calibration using Gaussian Process emulator and ABC methods. |
 | `networks_to_seir.ipynb` | Network-based SEIR model calibration focusing on transmission rate and initial infection fraction. |
+| `hybrid_abm_to_networks.py` | Hybrid model that switches from ABM to the Networks-SEIR using HM+ABC calibration with option to choose switching method. |
+| `hybrid_abm_to_seir.py` | Hybrid model that switches from ABM to the SEIR using HM+ABC calibration with option to choose switching method. |
 
 ---
 
