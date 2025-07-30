@@ -15,6 +15,7 @@ warnings.filterwarnings('ignore')
 pd.options.display.width = None
 pd.options.display.max_columns = None
 
+
 def func_b_r(inf_day):
     a = [0.0, 0.0, 0.9, 0.9, 0.55, 0.3, 0.15, 0.05]
     if inf_day < 9:
@@ -22,6 +23,7 @@ def func_b_r(inf_day):
     else:
         return 0
 
+    
 class Main:
     def __init__(self, strains_keys, infected_init, alpha, lmbd):
         ''' создание обьекта типа Main и задание основных данных '''
@@ -61,28 +63,30 @@ class Main:
 
 
     @file_timer
-    def start(self, with_seirb=False):
+    def start(self, with_seirb=False, with_switch=False, frac=0.01):
         ''' функция запуска вычислений '''
         # np.random.seed(1)
 
         data = self.data_current
-        print(data[data.susceptible_H1N1==0])
+        #print(data[data.susceptible_H1N1==0])
 
         cpu_num = mp.cpu_count()
-        print("{} processors detected".format(cpu_num))
+        #print("{} processors detected".format(cpu_num))
 
-        print("Starting from I0: ")
-        print(data[data.illness_day > 2].sp_id)
+        #print("Starting from I0: ")
+        #print(data[data.illness_day > 2].sp_id)
 
         with mp.Pool(self.num_runs) as pool:
                 #pool.map(self.main, range(self.num_runs),
-                pool.map(partial(self.main, with_seirb=with_seirb), 
+                pool.map(partial(self.main, 
+                                 with_seirb=with_seirb, with_switch=with_switch, frac=frac), 
                          range(self.num_runs))
 
         return True
 
 
-    def main(self, number_seed, with_seirb=False):
+    def main(self, number_seed, with_seirb=False, with_switch=False,
+            frac=0.01):
         ''' основной цикл работы '''
         # np.random.seed(1)
 
@@ -114,14 +118,22 @@ class Main:
                                                                  len(fin_cols))),
                                                        columns=fin_cols)
             self.SEIRb_day.index = self.days
+        
+        n_days_exposed = 2 # сколько дней не может заражать
+        strain_key = self.strains_keys[0]
+        key_cols = [f'{col}_{strain_key}' for col in self.cols]
             
-        # инфецирование по дням
+        # инфицирование по дням
         for j in self.days:
-            self.day(j, number_seed, with_seirb)
+            self.day(j, number_seed, with_seirb, with_switch)
+            
+            full_pop = self.SEIRb_day.loc[j, key_cols].sum()
+            if (with_switch) & (self.SEIRb_day.loc[j, f'I_{strain_key}'] > full_pop*frac):
+                break
            
 
         # выгрузка результатов в файлы
-        self.json_from_dict(self.place_dict, r'/inf_people_{}.json', number_seed)
+        #self.json_from_dict(self.place_dict, r'/inf_people_{}.json', number_seed)
         self.csv_from_dict(self.adult_res_dict, r'/adult_incidence_{}.csv', number_seed)
         self.csv_from_dict(self.child_res_dict, r'/child_incidence_{}.csv', number_seed)
         self.csv_from_dict(self.old_res_dict, r'/old_incidence_{}.csv', number_seed)
@@ -130,9 +142,10 @@ class Main:
 
 
     @day_timer
-    def day(self, j, number_seed, with_seirb=False):
+    def day(self, j, number_seed, with_seirb=False, with_switch=False):
         ''' симуляция 1 дня '''
         if len(self.data_current[self.data_current.illness_day > 2]) != 0:
+            
             x_rand = np.random.rand(1000000)
 
             # словари с id мест, где есть инфецированные
@@ -342,7 +355,8 @@ class Main:
             os.makedirs(path)
             print("Directory created successfully!\n\n" if verbose else '', end='')
         else:
-            print("Directory already exists!\n\n" if verbose else '', end='')
+            pass
+            #print("Directory already exists!\n\n" if verbose else '', end='')
 
         return True
 

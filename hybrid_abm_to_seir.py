@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import random
 import os
+import glob
 from tqdm import tqdm
 from scipy.stats import uniform, norm, multivariate_normal
 from scipy.integrate import odeint
@@ -12,8 +13,14 @@ import warnings
 import shutil
 import time
 warnings.filterwarnings('ignore')
-from agent_based_model import load_data, preprocess_data, set_initial_values, main_function
+from agent_based_model import load_data, preprocess_data
 from main_pool import Main
+
+import plot_hyb
+import predict_Beta_I
+import seir_discrete
+import choice_start_day
+
 
 class ABC_Agent:
     """
@@ -33,12 +40,35 @@ class ABC_Agent:
         # store history matching results
         self.hm_results = None
         
-    def run_simulation(self, params):
+         
+    def switch_seir(self, sim_data, modeling_dur=250):
+        switch_day = sim_data.shape[0]
+        sigma = 1/2
+        gamma = 1/6
+
+        y0 = sim_data.tail(1).iloc[:,:4].values.flatten()
+        # FOR FULL OBSERVED DATA
+        ts = np.arange(modeling_dur-switch_day)
+
+        
+        #beta = before['beta_H1N1'].expanding(1).mean().values[-1]
+        # Median from HM accepted parameters' trajectories!
+        median_b = pd.read_csv('median_beta.csv')
+        beta = median_b.iloc[switch_day:].values
+        S,E,I,R = seir_discrete.seir_model(y0, ts, beta, 
+                                           sigma, gamma, stype='d', 
+                                           beta_t=True).T
+        fin = np.array([*sim_data['I_H1N1'].values, *I])
+        return fin
+        
+           
+    def run_simulation(self, params, with_switch=False, num_runs=1, frac=0.0001):
         """
         Run ABM simulation with given parameters
         """
         alpha = params['alpha']
         lmbd = params['lmbd']
+        
         try:
             pool = Main(
                 strains_keys=self.strains_keys,
@@ -46,7 +76,7 @@ class ABC_Agent:
                 alpha=[alpha, alpha, alpha],
                 lmbd=lmbd
             )
-            num_runs = 5
+            num_runs = num_runs
             pool.runs_params(
                 num_runs=num_runs,
                 days=[1, len(self.days)],
@@ -56,23 +86,55 @@ class ABC_Agent:
                 age_groups=['0-10', '11-17', '18-59', '60-150'],
                 vaccined_fraction=[0, 0, 0, 0]
             )
-            pool.start(with_seirb=True)
-            all_results = []
-            for run_number in range(num_runs):
-                results_path = os.path.join(pool.results_dir, f"prevalence_seed_{run_number}.csv")
-                if os.path.exists(results_path):
-                    sim_results = pd.read_csv(results_path, sep='\t')
-                    sim_results['run'] = run_number
-                    all_results.append(sim_results)
-            if all_results:
-                combined_results = pd.concat(all_results, ignore_index=True)
-                avg_results = combined_results.groupby('day').mean().reset_index()
-                return avg_results
+            pool.start(with_seirb=True, with_switch=with_switch, frac=frac)
+            
+            # для гибрида нужны компартменты!
+            if with_switch:
+                
+                all_results = []
+                for run_number in range(num_runs):
+                    results_path = os.path.join(pool.results_dir, 
+                                                f"seirb_seed_{run_number}.csv")
+                     
+                    if os.path.exists(results_path):
+                        seirb_results = pd.read_csv(results_path, sep='\t')
+                        # обрезаем до нулей
+                        stop = seirb_results[seirb_results.I_H1N1==0].index
+                        if stop.shape[0]:
+                            seirb_results = seirb_results.iloc[:stop[0]]
+
+                        sim_data = self.switch_seir(seirb_results)
+                        
+                        sim_results = pd.DataFrame(np.nan_to_num(sim_data),
+                                                  columns=['H1N1']).reset_index()
+                        all_results.append(sim_results)
+                        
+                if all_results:
+                    combined_results = pd.concat(all_results, ignore_index=True)
+                    avg_results = combined_results.groupby('index'
+                                                          ).mean()['H1N1'].values
+                    return avg_results  
+                
             else:
-                return None
+                all_results = []
+                for run_number in range(num_runs):
+                    results_path = os.path.join(pool.results_dir, f"prevalence_seed_{run_number}.csv")
+                    if os.path.exists(results_path):
+                        sim_results = pd.read_csv(results_path, sep='\t')
+                        sim_results['run'] = run_number
+                        all_results.append(sim_results)
+
+                if all_results:
+                    combined_results = pd.concat(all_results, ignore_index=True)
+                    avg_results = combined_results.groupby('day').mean().reset_index()
+                    return avg_results
+                else:
+                    return None
+            
         except Exception as e:
             print(f"ABM Simulation error: {e}")
             return None
+    
     
     def calculate_distance(self, sim_data):
         """Calculate MSE distance between simulated and observed data"""
@@ -88,30 +150,69 @@ class ABC_Agent:
             print(f"Error calculating distance: {e}")
             return np.inf
     
-    def history_matching(self, prior_ranges, n_samples=100, accept_ratio=0.2):
+    
+    def history_matching(self, prior_ranges, n_samples=100, accept_ratio=0.2,
+                        prepared=True):
         """Perform history matching to find plausible parameter regions"""
         print(f"Running ABM history matching with {n_samples} samples...")
-        samples = []
-        for _ in range(n_samples):
-            sample = {}
-            for param, (min_val, max_val) in prior_ranges.items():
-                sample[param] = uniform.rvs(loc=min_val, scale=max_val-min_val)
-            samples.append(sample)
-        results = []
-        for sample in tqdm(samples, desc="ABM History Matching"):
-            sim_data = self.run_simulation(sample)
-            distance = self.calculate_distance(sim_data)
-            result_dict = {
-                "alpha": sample["alpha"],
-                "lmbd": sample["lmbd"],
-                "distance": distance
-            }
-            if sim_data is not None:
-                result_dict["trajectory"] = sim_data["H1N1"].copy()
-            else:
-                result_dict["trajectory"] = None
-            results.append(result_dict)
+        
+        if prepared:
+            # берем файлы по уникальным параметрам
+            files = glob.glob('chelyabinsk_0.3_sampled/*.csv')
+            u_files = pd.Series(files).apply(lambda x: x.split('seirb')[0]
+                                            ).unique()[:n_samples]
+            
+            results = []
+            for file in tqdm(u_files, desc="ABM History Matching"):
+                # берем все сиды для одного набора параметров и усредняем
+                seeds = glob.glob(f'{file}*.csv')
+                all_results = []
+                for seed in seeds:
+                    seed_df = pd.read_csv(seed)[['I_H1N1']].reset_index()
+                    all_results.append(seed_df)
+                    
+                combined_results = pd.concat(all_results, ignore_index=True)
+                combined_results.columns=['day', 'H1N1']
+                sim_data = combined_results.groupby('day').mean().reset_index()  
+                distance = self.calculate_distance(sim_data)
+                
+                # add trajectory to results dictionary
+                trajectory = []
+                if sim_data is not None:
+                    trajectory = sim_data["H1N1"].values.tolist()
+                    
+                # берем значения параметров    
+                params = file.split('\\')[1]
+                sample_alpha = float(params.split('_')[1])
+                sample_lmbd = float(params.split('_')[3])
+                # store trajectory data
+                result = [sample_alpha, sample_lmbd, distance, trajectory]
+                
+                results.append(result)
+            
+        else:
+            samples = []
+            for _ in range(n_samples):
+                sample = {}
+                for param, (min_val, max_val) in prior_ranges.items():
+                    sample[param] = uniform.rvs(loc=min_val, scale=max_val-min_val)
+                samples.append(sample)
+            
+            results = []
+            for sample in tqdm(samples, desc="ABM History Matching"):
+                sim_data = self.run_simulation(sample)
+                distance = self.calculate_distance(sim_data)
+
+                trajectory = []
+                if sim_data is not None:
+                    trajectory = sim_data["H1N1"].values.tolist()
+                    
+                result = [sample["alpha"], sample["lmbd"], distance, trajectory]    
+                results.append(result)
+            
         results_df = pd.DataFrame(results)
+        results_df.columns = ['alpha','lmbd','distance','trajectory']
+        
         if not results_df.empty and 'distance' in results_df.columns:
             print(f"Distance stats: min={results_df['distance'].min()}, max={results_df['distance'].max()}, mean={results_df['distance'].mean()}")
             n_accept = max(1, int(len(results_df) * accept_ratio))
@@ -119,20 +220,38 @@ class ABC_Agent:
         else:
             print("No valid results from ABM history matching")
             accepted = pd.DataFrame()
+            
         print(f"ABM History matching accepted {len(accepted)} parameter sets")
+        accepted.to_csv(f'results/{self.data_path}/hm_{n_samples}_samples.csv',
+                        index=False)
         self.hm_results = accepted
+        
         return accepted
+
     
-    def rejection_abc(self, n_samples=100, accept_ratio=0.1):
+    def rejection_abc(self, n_samples=100, accept_ratio=0.1, 
+                      frac=0.0001, num_runs=1):
         """ABC rejection sampling"""
         if self.hm_results is None or self.hm_results.empty:
             print("Warning: No ABM history matching results available. Cannot run rejection ABC.")
             return pd.DataFrame()
+        
         print(f"Running ABM ABC rejection with {n_samples} samples...")
+        '''
         param_bounds = {
-            'alpha': (self.hm_results['alpha'].min(), self.hm_results['alpha'].max()),
-            'lmbd': (self.hm_results['lmbd'].min(), self.hm_results['lmbd'].max())
+            'alpha': (self.hm_results['alpha'].min(), 
+                      self.hm_results['alpha'].max()),
+            'lmbd': (self.hm_results['lmbd'].min(), 
+                     self.hm_results['lmbd'].max())
         }
+        '''
+        param_bounds = {
+            'alpha': (self.hm_results['alpha'].quantile(.25), 
+                      self.hm_results['alpha'].quantile(.75)),
+            'lmbd': (self.hm_results['lmbd'].quantile(.25), 
+                     self.hm_results['lmbd'].quantile(.75))
+        }
+        
         samples = []
         for _ in range(n_samples):
             hm_idx = np.random.randint(0, len(self.hm_results))
@@ -143,9 +262,13 @@ class ABC_Agent:
                 param_min, param_max = param_bounds[param]
                 sample[param] = np.clip(hm_sample[param] + perturb, param_min, param_max)
             samples.append(sample)
+            
         results = []
         for sample in tqdm(samples, desc="ABM ABC Rejection"):
-            sim_data = self.run_simulation(sample)
+            # ABM switch (1% of Infected)
+            sim_data = self.run_simulation(sample, with_switch=True, 
+                                           num_runs=num_runs, frac=frac)
+            sim_data = pd.DataFrame(sim_data, columns=['H1N1'])
             distance = self.calculate_distance(sim_data)
             result_dict = {
                 "alpha": sample["alpha"],
@@ -157,19 +280,25 @@ class ABC_Agent:
             else:
                 result_dict["trajectory"] = None
             results.append(result_dict)
+            
         results_df = pd.DataFrame(results)
+        
         if not results_df.empty and 'distance' in results_df.columns:
             n_accept = max(1, int(len(results_df) * accept_ratio))
             accepted = results_df.nsmallest(n_accept, "distance")
         else:
             accepted = pd.DataFrame()
         print(f"ABM ABC rejection accepted {len(accepted)} parameter sets")
+        
         return accepted
+    
+    
     def annealing_abc(self, n_samples=50, cooling_steps=3, accept_ratio=0.1):
         """ABC with simulated annealing"""
         if self.hm_results is None or self.hm_results.empty:
             print("Warning: No ABM history matching results available. Cannot run annealing ABC.")
             return pd.DataFrame()
+        
         print(f"Running ABM ABC annealing with {cooling_steps} cooling steps...")
         initial_epsilon = self.hm_results['distance'].quantile(0.5)
         final_epsilon = self.hm_results['distance'].quantile(0.1)
@@ -178,12 +307,14 @@ class ABC_Agent:
             'alpha': (self.hm_results['alpha'].min(), self.hm_results['alpha'].max()),
             'lmbd': (self.hm_results['lmbd'].min(), self.hm_results['lmbd'].max())
         }
+        
         current_samples = []
         for _ in range(n_samples):
             hm_idx = np.random.randint(0, len(self.hm_results))
             hm_sample = self.hm_results.iloc[hm_idx]
             sample = {param: hm_sample[param] for param in ['alpha', 'lmbd']}
             current_samples.append(sample)
+            
         for step, epsilon in enumerate(epsilons):
             print(f"ABM Annealing step {step+1}/{cooling_steps}, epsilon = {epsilon:.2f}")
             results = []
@@ -200,12 +331,14 @@ class ABC_Agent:
                 else:
                     result_dict["trajectory"] = None
                 results.append(result_dict)
+                
             results_df = pd.DataFrame(results)
             if not results_df.empty and 'distance' in results_df.columns:
                 n_accept = max(1, int(len(results_df) * accept_ratio))
                 accepted = results_df.nsmallest(n_accept, "distance")
             else:
                 accepted = pd.DataFrame()
+                
             if step < cooling_steps - 1 and not accepted.empty:
                 new_samples = []
                 for _ in range(n_samples):
@@ -219,21 +352,36 @@ class ABC_Agent:
                     new_samples.append(sample)
                 current_samples = new_samples
         print(f"ABM ABC annealing accepted {len(accepted)} parameter sets")
+        
         return accepted
     
-    def smc_abc(self, n_particles=50, n_populations=3, accept_ratio=0.1):
+    
+    def smc_abc(self, n_particles=50, n_populations=3, 
+                accept_ratio=0.1, frac=0.01, num_runs=1):
         """ABC Sequential Monte Carlo"""
         if self.hm_results is None or self.hm_results.empty:
             print("Warning: No ABM history matching results available. Cannot run SMC ABC.")
             return pd.DataFrame()
+        
         print(f"Running ABM ABC-SMC with {n_populations} populations...")
         initial_epsilon = self.hm_results['distance'].quantile(0.7)
         final_epsilon = self.hm_results['distance'].quantile(0.05)
         epsilons = np.geomspace(initial_epsilon, final_epsilon, n_populations)
+        '''
         param_bounds = {
-            'alpha': (self.hm_results['alpha'].min(), self.hm_results['alpha'].max()),
-            'lmbd': (self.hm_results['lmbd'].min(), self.hm_results['lmbd'].max())
+            'alpha': (self.hm_results['alpha'].min(), 
+                      self.hm_results['alpha'].max()),
+            'lmbd': (self.hm_results['lmbd'].min(), 
+                     self.hm_results['lmbd'].max())
         }
+        '''
+        param_bounds = {
+            'alpha': (self.hm_results['alpha'].quantile(.25), 
+                      self.hm_results['alpha'].quantile(.75)),
+            'lmbd': (self.hm_results['lmbd'].quantile(.25), 
+                     self.hm_results['lmbd'].quantile(.75))
+        }
+        
         particles = []
         for _ in range(n_particles):
             hm_idx = np.random.randint(0, len(self.hm_results))
@@ -241,13 +389,18 @@ class ABC_Agent:
             particle = {param: hm_sample[param] for param in ['alpha', 'lmbd']}
             particles.append(particle)
         weights = np.ones(n_particles) / n_particles
+        
         for t in range(n_populations):
             epsilon = epsilons[t]
             print(f"ABM SMC Population {t+1}/{n_populations}, epsilon = {epsilon:.2f}")
             distances = []
             trajectories = []
+            
             for particle in tqdm(particles, desc=f"ABM SMC Population {t+1}"):
-                sim_data = self.run_simulation(particle)
+                # ABM switch (1% of Infected)
+                sim_data = self.run_simulation(particle, with_switch=True, 
+                                               num_runs=num_runs, frac=frac)
+                sim_data = pd.DataFrame(sim_data, columns=['H1N1'])
                 distance = self.calculate_distance(sim_data)
                 distances.append(distance)
                 if sim_data is not None:
@@ -255,9 +408,11 @@ class ABC_Agent:
                 else:
                     trajectories.append(None)
             new_weights = np.zeros(n_particles)
+            
             for i, distance in enumerate(distances):
                 if distance < epsilon:
                     new_weights[i] = weights[i]
+                    
             if np.sum(new_weights) > 0:
                 new_weights = new_weights / np.sum(new_weights)
             else:
@@ -266,6 +421,7 @@ class ABC_Agent:
                 for i in range(n_best):
                     new_weights[sorted_indices[i]] = 1.0
                 new_weights = new_weights / np.sum(new_weights)
+                
             ESS = 1.0 / np.sum(new_weights**2)
             print(f"ABM Effective sample size: {ESS:.1f}")
             if ESS < n_particles / 2:
@@ -275,6 +431,7 @@ class ABC_Agent:
                 weights = np.ones(n_particles) / n_particles
             else:
                 weights = new_weights
+                
             if t < n_populations - 1:
                 param_values = np.array([[p['alpha'], p['lmbd']] for p in particles])
                 cov = np.cov(param_values.T) + np.eye(2) * 1e-6
@@ -296,6 +453,7 @@ class ABC_Agent:
                     if attempts >= 50:
                         new_particles.append(particle)
                 particles = new_particles
+                
         final_results = []
         for i, particle in enumerate(particles):
             final_results.append({
@@ -307,8 +465,10 @@ class ABC_Agent:
             })
         results_df = pd.DataFrame(final_results)
         print(f"ABM ABC-SMC completed with {len(results_df)} particles")
+        
         return results_df
 
+    
 class SEIR_Calibrator:
     def __init__(self, observed_data, population=10000, fixed_alpha=1/3, fixed_gamma=1/5):
         self.observed_data = observed_data
@@ -316,6 +476,7 @@ class SEIR_Calibrator:
         self.fixed_alpha = fixed_alpha  # 1/incubation_period
         self.fixed_gamma = fixed_gamma  # 1/infectious_period
         self.hm_results = None
+    
     
     def seir_model(self, y, t, beta, alpha, gamma):
         """
@@ -327,6 +488,7 @@ class SEIR_Calibrator:
         dIdt = alpha * E - gamma * I
         dRdt = gamma * I
         return [dSdt, dEdt, dIdt, dRdt]
+    
     
     def run_simulation(self, beta, initial_infected, alpha, t_max=None):
         """
@@ -354,6 +516,7 @@ class SEIR_Calibrator:
             print(f"SEIR Simulation error: {e}")
             return None
     
+    
     def calculate_distance(self, sim_data):
         """Calculate MSE distance between simulated and observed data"""
         if sim_data is None:
@@ -366,6 +529,7 @@ class SEIR_Calibrator:
             return distance
         except Exception as e:
             return np.inf
+    
     
     def history_matching(self, prior_ranges, n_samples=200, accept_ratio=0.2):
         """History matching calibration"""
@@ -399,6 +563,8 @@ class SEIR_Calibrator:
         self.hm_results = accepted
         print(f"SEIR History matching accepted {len(accepted)} parameter sets")
         return accepted
+    
+    
     def rejection_abc(self, n_samples=100, accept_ratio=0.1):
         """ABC rejection sampling"""
         if self.hm_results is None or self.hm_results.empty:
@@ -449,6 +615,7 @@ class SEIR_Calibrator:
             accepted = pd.DataFrame()
         print(f"SEIR ABC rejection accepted {len(accepted)} parameter sets")
         return accepted
+    
     
     def annealing_abc(self, n_samples=50, cooling_steps=3, accept_ratio=0.1):
         """ABC with simulated annealing"""
@@ -509,6 +676,7 @@ class SEIR_Calibrator:
                 current_samples = new_samples
         print(f"SEIR ABC annealing accepted {len(accepted)} parameter sets")
         return accepted
+    
     
     def smc_abc(self, n_particles=50, n_populations=3, accept_ratio=0.1):
         """ABC Sequential Monte Carlo"""
@@ -600,7 +768,13 @@ class SEIR_Calibrator:
         print(f"SEIR ABC-SMC completed with {len(results_df)} particles")
         return results_df
 
-def generate_synthetic_data(alpha=0.78, lmbd=0.4, days=range(1, 100), data_path="./chelyabinsk_10/"):
+    
+def generate_synthetic_data(alpha=0.78, lmbd=0.4, 
+                            days=range(1, 100), 
+                            data_path="./chelyabinsk_10/",
+                            num_runs=1,
+                            with_seirb=True, with_switch=True,
+                            for_observed=False):
     """
     Generate synthetic data with the actual agent-based model.
     """
@@ -613,7 +787,7 @@ def generate_synthetic_data(alpha=0.78, lmbd=0.4, days=range(1, 100), data_path=
         lmbd=lmbd
     )
     # configure the simulation
-    num_runs = 1
+    num_runs = num_runs
     pool.runs_params(
         num_runs=num_runs,
         days=[1, len(days)],
@@ -625,11 +799,18 @@ def generate_synthetic_data(alpha=0.78, lmbd=0.4, days=range(1, 100), data_path=
         vaccined_fraction=[0, 0, 0, 0]
     )
     # run the simulation
-    pool.start(with_seirb=True)
-    # load results
-    results_path = os.path.join(pool.results_dir, "prevalence_seed_0.csv")
-    data = pd.read_csv(results_path, sep='\t')
-    return data
+    pool.start(with_seirb=with_seirb, with_switch=with_switch)
+    
+    if for_observed:
+        results_path = os.path.join(pool.results_dir, "seirb_seed_0.csv")
+        data = pd.read_csv(results_path, sep='\t')
+        data.to_csv(f'results/{data_path}/observed.csv', index=False)
+        return data
+    else:
+        results_path = os.path.join(pool.results_dir, "prevalence_seed_0.csv")
+        data = pd.read_csv(results_path, sep='\t')
+        return data
+
 
 def ensure_day_column(data):
     if 'day' not in data.columns:
@@ -637,6 +818,7 @@ def ensure_day_column(data):
         data['day'] = range(1, len(data) + 1)
         print("Added 'day' column to data")
     return data
+
 
 def print_data_info(data, name="Data"):
     """
@@ -649,6 +831,7 @@ def print_data_info(data, name="Data"):
         print(f"First few rows:\n{data.head()}")
     print("-" * 50)
 
+    
 def get_best_params_safely(results):
     """
     Get best parameters from results DataFrame
@@ -666,6 +849,7 @@ def get_best_params_safely(results):
         print(f"Error getting best parameters: {e}")
         return None
 
+    
 class ABM_to_SEIR_Framework:
     """
     Complete framework for switching from ABM to SEIR model
@@ -679,6 +863,7 @@ class ABM_to_SEIR_Framework:
         self.switch_point = None
         self.calibration_results = {}
         self.combined_trajectories = {}
+        
         
     def generate_abm_data(self, alpha=0.78, lmbd=0.4, days=100):
         """
@@ -696,6 +881,7 @@ class ABM_to_SEIR_Framework:
         #print_data_info(self.abm_data, "ABM Data")
         
         return self.abm_data
+    
     
     def find_switch_point(self):
         """
@@ -823,7 +1009,7 @@ def run_complete_framework(alpha=0.78, lmbd=0.4, days=100, switch_fraction=0.01,
         if not results.empty:
             params_filename = f"{method}_parameters_SEIR.csv"
             # TODO: HERE WE REMOVE THE TRAJECTORY DATA BUT IT CAN BE SAVED
-            results_to_save = results.drop('trajectory', axis=1, errors='ignore')
+            #results_to_save = results.drop('trajectory', axis=1, errors='ignore')
             results_to_save.to_csv(params_filename, index=False)
             print(f"Saved {method} parameters to: {params_filename}")
     try:
@@ -955,6 +1141,7 @@ def run_complete_framework(alpha=0.78, lmbd=0.4, days=100, switch_fraction=0.01,
         print(f"  Initial infected: {params['initial_infected']}")
         print(f"  Distance: {params['distance']:.2f}")
     return abm_data, calibration_results, switch_point, combined_trajectories, best_parameters
+
 
 if __name__ == "__main__":
     global alpha 

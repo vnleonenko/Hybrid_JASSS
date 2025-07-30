@@ -24,15 +24,11 @@ from main_pool import *
 
 
 def load_data(data_path, frac=1):
-    #data = pd.read_csv(data_path + 'people.txt', sep='\t')
-    #data = pd.read_csv('C:/EGuseva/ABM_gen-main/data/chelyabinsk_10/people.txt', sep='\t')
-    #data_path = r"C:/Elizabetty/Desktop/chelyab/chelyabinsk_10"
-    #data = pd.read_csv(data_path + 'people.txt', sep='\t')
-    data = pd.read_csv('/mnt/c/Users/Elizabetty/Desktop/chelyab/chelyabinsk_10/people.txt', sep='\t')
+    data = pd.read_csv('data/chelyabinsk_0.3_sampled_data/people.txt', sep='\t')
     data = data[['sp_id', 'sp_hh_id', 'age', 'sex', 'work_id']]
     data=data.sample(frac=frac)
-    #households = pd.read_csv(data_path + 'households.txt', sep='\t')
-    households = pd.read_csv('/mnt/c/Users/Elizabetty/Desktop/chelyab/data/chelyabinsk_10/households.txt', sep='\t')
+    
+    households = pd.read_csv('data/chelyabinsk_0.3_sampled_data/households.txt', sep='\t')
     households = households[['sp_id', 'latitude', 'longitude']]
     dict_school_id = {str(i[0]): list(i[1].index) for i in data[(
         data.age < 18) & (data.work_id != 'X')].groupby('work_id')}
@@ -546,8 +542,8 @@ if __name__ == '__main__':
     strains_keys = ['H1N1', 'H3N2', 'B']
     
     
-    data_folder = '../chelyabinsk_10/'
-    data_path = "../chelyabinsk_10/"
+    data_folder = 'chelyabinsk_0.3_sampled_data/'
+    data_path = "chelyabinsk_0.3_sampled_data/"
     results_dir = f'{data_folder}_res_supernew/'
 
     if not os.path.exists(results_dir):
@@ -593,7 +589,7 @@ if __name__ == '__main__':
     pool.runs_params(
         num_runs = 5, 
         days = [1, 50],
-        data_folder = 'chelyabinsk_10',
+        data_folder = 'chelyabinsk_0.3_sampled_data',
         )
 
     pool.age_groups_params(
