@@ -53,20 +53,21 @@ def inc_learning(seed_df, start_day, model_path):
 class LSTMPredictor:
     """
     Wraps the trained LSTM model to predict beta on a rolling window of
-    [day, E, prev_I] (3 features). 
+    [day, E] (2 features). 
     The model was trained to predict normalized log_beta, so this class
     denormalizes the prediction and returns beta.
     """
     def __init__(self, model, full_scaler, window_size):
         self.model = model
+        self.n_feats = 2
         # Create a scaler for input features
         # Corrected feature_indices calculation:
-        feature_indices = list(range(3))
+        feature_indices = list(range(self.n_feats))
         self.input_scaler = StandardScaler()
         self.input_scaler.mean_ = full_scaler.mean_[feature_indices]
         self.input_scaler.scale_ = full_scaler.scale_[feature_indices]
         self.input_scaler.var_ = full_scaler.var_[feature_indices]
-        self.input_scaler.n_features_in_ = 3
+        self.input_scaler.n_features_in_ = self.n_feats
         self.window_size = window_size
         self.buffer = []
         # Store target parameters for log_beta (7th column)
@@ -82,13 +83,13 @@ class LSTMPredictor:
     def predict_next(self):
         # Ensure the buffer has window_size rows
         if len(self.buffer) < self.window_size:
-            padded = np.zeros((self.window_size, 3))
+            padded = np.zeros((self.window_size, self.n_feats))
             padded[-len(self.buffer):] = self.buffer
         else:
             padded = np.array(self.buffer[-self.window_size:])
             
         scaled = self.input_scaler.transform(padded)
-        scaled_window = scaled.reshape(1, self.window_size, 3)
+        scaled_window = scaled.reshape(1, self.window_size, self.n_feats)
         normalized_pred = self.model.predict(scaled_window, verbose=0)[0][0]
         # Denormalize to obtain the raw log_beta
         raw_log_beta = normalized_pred * self.target_scale + self.target_mean
@@ -99,7 +100,7 @@ class LSTMPredictor:
     
 def predict_beta(I_prediction_method, seed_df, beta_prediction_method, predicted_days, 
                  stochastic, count_stoch_line, sigma, gamma, 
-                 features_reg='', model_path=''):
+                 features_reg='', model_path='', window_size=14):
     
     '''
     Predict Beta values.
@@ -170,10 +171,13 @@ def predict_beta(I_prediction_method, seed_df, beta_prediction_method, predicted
         betas = pd.read_csv(model_path)
         beggining_beta = betas.iloc[:predicted_days[0]]['median_beta'].values
         predicted_beta = betas.iloc[predicted_days[0]:]['median_beta'].values
-        change = seed_df['Beta'].rolling(7).mean()[predicted_days[0]]
-        change = np.sign(change - predicted_beta[0]) * (np.abs(change - predicted_beta[0]))
-        beggining_beta += change
-        predicted_beta += change
+        change = seed_df['Beta'].rolling(7).mean()[predicted_days[0]
+                                                  ] - predicted_beta[0]
+        beggining_beta = beggining_beta + change
+        beggining_beta[beggining_beta<0] = 0
+        predicted_beta = predicted_beta + change
+        predicted_beta[predicted_beta<0] = 0
+        
 
     elif beta_prediction_method == 'regression (day)':
         #model_path = 'regression_day_for_seir.joblib'
@@ -190,10 +194,13 @@ def predict_beta(I_prediction_method, seed_df, beta_prediction_method, predicted
         beggining_beta = np.exp(model.predict(x_test))
         x_test = np.arange(predicted_days[0], seed_df.shape[0]).reshape(-1, 1)
         predicted_beta = np.exp(model.predict(x_test))
-        change = seed_df['Beta'].rolling(7).mean().iloc[predicted_days[0]]
-        change = np.sign(change - predicted_beta[0]) * (np.abs(change - predicted_beta[0]))
-        beggining_beta += change
-        predicted_beta += change 
+        
+        change = seed_df['Beta'].rolling(7).mean()[predicted_days[0]
+                                                  ] - predicted_beta[0]
+        beggining_beta = beggining_beta + change
+        beggining_beta[beggining_beta<0] = 0
+        predicted_beta = predicted_beta + change
+        predicted_beta[predicted_beta<0] = 0
 
     elif beta_prediction_method == 'regression (day);\nincremental learning':
         # model_path = 'regression_day_for_seir.joblib'
@@ -215,18 +222,12 @@ def predict_beta(I_prediction_method, seed_df, beta_prediction_method, predicted
         R[0:count_stoch_line+1,0] = seed_df.iloc[predicted_days[0]]['R']  
         E[0:count_stoch_line+1,0] = seed_df.iloc[predicted_days[0]]['E'] 
         
-        features_reg = ['day','prev_I','S','E','I','R']
-        
-        total_len = len(features_reg)    
-        if total_len == 3:
-            suffix = features_reg[-1].upper()  # последний элемент
-        elif total_len == 4:
-            suffix = ''.join(features_reg[-2:]).upper()  # два последних
-        elif total_len == 5:
-            suffix = ''.join(features_reg[-3:]).upper()  # три последних
-        elif total_len == 6:
-            suffix = ''.join(features_reg[-4:]).upper()  # четыре последних
-        #model_path = f'regression_day_{suffix}_prev_I_for_seir.joblib'
+        features_reg = ['day',
+                        #'prev_I',
+                        'S','E','I',
+                        #'R'
+                       ]
+
         y = np.array([S[:,0], E[:,0], predicted_I[:,0], R[:,0]])
         y = y.T
         model = load_saved_model(model_path)
@@ -235,14 +236,15 @@ def predict_beta(I_prediction_method, seed_df, beta_prediction_method, predicted
                              ]['I'
                               ].to_numpy() if predicted_days[0
                                               ] > 1 else np.array([0.0, 0.0])
-        
+        pop = S[0, 0]+E[0, 0]+predicted_I[0, 0]+R[0, 0]
+
         var_dict = {
                     'day': predicted_days[0],
-                    'prev_I': prev_I[0],
-                    'S': S[0, 0],
-                    'E': E[0, 0],
-                    'I': predicted_I[0, 0],
-                    'R': R[0, 0]
+                    'prev_I': prev_I[0]/pop,
+                    'S': S[0, 0]/pop,
+                    'E': E[0, 0]/pop,
+                    'I': predicted_I[0, 0]/pop,
+                    'R': R[0, 0]/pop
         }
         X_input = [var_dict[feature] for feature in features_reg]
 
@@ -276,29 +278,20 @@ def predict_beta(I_prediction_method, seed_df, beta_prediction_method, predicted
            
             y = np.array([S[:,1], E[:,1], predicted_I[:,idx+1], R[:,1]])
             y = y.T
-
+            
+            
             var_dict = {
             'day': predicted_days[idx+1],
-            'S': S[0, 1],
-            'E': E[0, 1],
-            'I': predicted_I[0, idx+1],
-            'R': R[0, 1] ,
-            'prev_I': predicted_I[0,idx]
+            'S': S[0, 1]/pop,
+            'E': E[0, 1]/pop,
+            'I': predicted_I[0, idx+1]/pop,
+            'R': R[0, 1]/pop ,
+            'prev_I': predicted_I[0,idx]/pop
             }
             
             
             X_input = [var_dict[feature] for feature in features_reg]
-            '''
-            if idx+predicted_days[0] > 76:
-                print()
-                print(idx+predicted_days[0])
-                print('comps', [S[0,1], E[0,1], predicted_I[0,idx+1], R[0,1]])
-                print('beta', predicted_beta[idx])
-                print('Xinput',X_input)
-                print(predicted_I)
-                
-                print(S[0,1] == 0)
-            '''
+            
             # если СЕИР предсказал где-то 0, тк у S убираем много людей,
             # то у нас будет потом None в следующих S.
             # и модель не сможет сработать. поэтому просто ставим 0
@@ -318,14 +311,15 @@ def predict_beta(I_prediction_method, seed_df, beta_prediction_method, predicted
     elif beta_prediction_method == 'lstm (day, E, previous I)':
         full_scaler = joblib.load(f'{model_path}.pkl')
         model = load_model(f'{model_path}.keras')
-        predictor = LSTMPredictor(model, full_scaler, window_size=14)
-        
+        predictor = LSTMPredictor(model, full_scaler, 
+                                  window_size=window_size)
+        '''
         prev_I = seed_df.iloc[predicted_days[0]-2:predicted_days[0]
                              ]['I'].to_numpy(
             ) if predicted_days[0] > 1 else np.array([0.0, 0.0])
-        
+        '''
         seed_df['day'] = range(len(seed_df))
-        seed_df['prev_I'] = seed_df['I'].shift(2).fillna(0)
+        #seed_df['prev_I'] = seed_df['I'].shift(2).fillna(0)
         predicted_beta = np.empty((0,))
         S = np.zeros((count_stoch_line+1, 2))
         E = np.zeros((count_stoch_line+1, 2))
@@ -336,11 +330,13 @@ def predict_beta(I_prediction_method, seed_df, beta_prediction_method, predicted
                     0] = seed_df.iloc[predicted_days[0]]['I']
         R[0:count_stoch_line+1,0] = seed_df.iloc[predicted_days[0]]['R']  
         E[0:count_stoch_line+1,0] = seed_df.iloc[predicted_days[0]]['E']  
-
+        
+        pop = seed_df.iloc[0,:4].sum()
         # Initialize predictor buffer using the last 'window_size' days
         for i in range(predicted_days[0] - predictor.window_size + 1, predicted_days[0] + 1):
             row = seed_df.iloc[i]
-            raw_features = [row['day'], row['E'], row['prev_I']]
+            raw_features = [row['day'], row['E']/pop, #row['prev_I']
+                           ]
             predictor.update_buffer(raw_features)
         y = np.array([S[:,0], E[:,0], predicted_I[:,0], R[:,0]])
         y = y.T
@@ -365,9 +361,13 @@ def predict_beta(I_prediction_method, seed_df, beta_prediction_method, predicted
             y = np.array([S[:,1], E[:,1], predicted_I[:,idx+1], R[:,1]])
             y = y.T
             if idx == 0:
-                predictor.update_buffer([predicted_days[idx+1], E[0,1], prev_I[1]])
+                predictor.update_buffer([predicted_days[idx+1], E[0,1]/pop,
+                                         #prev_I[1]
+                                        ])
             else:
-                predictor.update_buffer([predicted_days[idx+1], E[0,1], predicted_I[0,idx-1]])
+                predictor.update_buffer([predicted_days[idx+1], E[0,1]/pop,
+                                         #predicted_I[0,idx-1]
+                                        ])
                 
     return np.array(beggining_beta), np.array(predicted_beta), predicted_I 
 

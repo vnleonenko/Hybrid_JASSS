@@ -621,7 +621,8 @@ def plot_results(observed_data, abc_results,
     plt.style.use("default")
     fig, axes = plt.subplots(2, 2, figsize=(10, 8))
     axes = axes.flatten()
-
+    observed_clm = observed_data.columns[0]
+    
     if len(abc_results) == 0:
         axes[0].text(0.5, 0.5, f"No accepted parameter sets for {method_name}", 
                     horizontalalignment='center', verticalalignment='center')
@@ -632,27 +633,34 @@ def plot_results(observed_data, abc_results,
         if 'weight' in abc_results.columns:
             s=abc_results["weight"]*100
         else:
-            s=40
-        scatter = axes[0].scatter(abc_results["alpha"], abc_results["lmbd"], 
+            s=30
+        #s=30
+        
+        param_names = abc_results.columns.drop(['distance',
+                                                'trajectory']).values   
+        
+        scatter = axes[0].scatter(abc_results[param_names[0]], 
+                                  abc_results[param_names[1]], 
                                   alpha=0.6, s=s, label='Accepted')    
         # 'true' parameters    
         axes[0].scatter(true_alpha, true_lmbd, alpha=0.6, 
                         color='black', label='Observed', s=50)
 
         axes[0].set_title(f"Accepted parameters - {method_name}")
-        axes[0].set_xlabel("Alpha")
-        axes[0].set_ylabel("Lambda")
+        axes[0].set_xlabel(param_names[0])
+        axes[0].set_ylabel(param_names[1])
         
         if len(hm_results):
-            axes[0].set_xlim(hm_results['alpha'].quantile(.2),
-                            hm_results['alpha'].quantile(.8))
-            axes[0].set_ylim(hm_results['lmbd'].quantile(.2),
-                            hm_results['lmbd'].quantile(.8))
+            axes[0].set_xlim(hm_results[param_names[0]].quantile(.2),
+                            hm_results[param_names[0]].quantile(.8))
+            axes[0].set_ylim(hm_results[param_names[1]].quantile(.2),
+                            hm_results[param_names[1]].quantile(.8))
         axes[0].legend()
         axes[0].grid()
 
         # ____ Trajectories from accepted parameters ____
         n_plot = min(n_trajectories, len(abc_results))
+        
         for i in range(n_plot):
             traj = abc_results.iloc[i]["trajectory"]
             if i==0:
@@ -660,10 +668,15 @@ def plot_results(observed_data, abc_results,
             else:
                 label=''
             axes[1].plot(traj, alpha=0.4, label=label)
-
+           
+        #print(abc_results.iloc[0]["trajectory"])
+        '''
+        axes[1].plot(abc_results.iloc[:n_plot]["trajectory"],
+                     label='Accepted trajectory', alpha=0.4)
+        '''
         # plot time series (of observed)
         axes[1].plot(#np.tile(observed_data["H1N1"], 5), 
-                    observed_data["H1N1"],
+                    observed_data[observed_clm],
                      label="Observed", color="black", linestyle="--")
         axes[1].set_title("Time series comparison")
         axes[1].set_xlabel("Time")
@@ -671,7 +684,7 @@ def plot_results(observed_data, abc_results,
         axes[1].legend()
         axes[1].grid()
 
-        stop = observed_data[observed_data.H1N1==0].index
+        stop = observed_data[observed_data[observed_clm]==0].index
         if stop.shape[0]:
             axes[1].set_xlim(-5, stop[0]+10)
         else:
@@ -679,25 +692,34 @@ def plot_results(observed_data, abc_results,
 
         # ____ Posterior destribution of parameter 1 ____
         plt.style.use("default")
-        axes[2].hist(abc_results['alpha'], alpha=0.4, color='gray')
-        sns.kdeplot(abc_results['alpha'], color="tab:blue", 
+        '''
+        axes[2].hist(abc_results[param_names[0]], alpha=0.4, color='gray')
+        sns.kdeplot(abc_results[param_names[0]], color="tab:blue", 
                     shade=True, ax=axes[2])
+        '''
+        
+        sns.histplot(abc_results[param_names[0]], alpha=0.4, 
+                     color='tab:blue', bins=min(abc_results.shape[0]+1, 30), 
+                     kde=True, stat='probability', edgecolor=None, 
+                     ax=axes[2])
+        
         axes[2].axvline(true_alpha, ls='--', color='black',
                         label='Observed')
-        axes[2].set_title("Alpha, posterior destribution")
-        axes[2].set_xlabel('Alpha')
+        axes[2].set_title(f"{param_names[0]}, posterior destribution")
+        axes[2].set_xlabel(f'{param_names[0]}')
         axes[2].legend()
         axes[2].grid()
 
         # ____ Posterior destribution of parameter 2 ____
         plt.style.use("default")
-        axes[3].hist(abc_results['lmbd'], alpha=0.4, color='gray')
-        sns.kdeplot(abc_results['lmbd'], color="tab:blue", 
-                    shade=True, ax=axes[3])
+        sns.histplot(abc_results[param_names[1]], alpha=0.4, 
+                     color='tab:blue', bins=min(abc_results.shape[0]+1, 30), 
+                     kde=True, stat='probability', edgecolor=None, 
+                     ax=axes[3])
         axes[3].axvline(true_lmbd, ls='--', color='black',
                         label='Observed')
-        axes[3].set_title("Lambda, posterior destribution")
-        axes[3].set_xlabel('Lambda')
+        axes[3].set_title(f"{param_names[1]}, posterior destribution")
+        axes[3].set_xlabel(f'{param_names[1]}')
         axes[3].legend()
         axes[3].grid()
 

@@ -55,11 +55,14 @@ def plot_one(ax,
     peak = [actual_peak_I, predicted_peak_I,actual_peak_day,predicted_peak_day] 
 
     # calculate RMSE for Infected and Beta values
-    actual_I = seed_df.iloc[predicted_days[0]:]['I'].values 
-    rmse_I = rmse(actual_I, predicted_I[0])
+    actual_I = seed_df.iloc[predicted_days[0]:]['I'].values
+    rmse_I = rmse(np.nan_to_num(actual_I, neginf=0, posinf=0),
+                  np.nan_to_num(predicted_I[0], neginf=0, posinf=0))
     
     actual_Beta = seed_df.iloc[predicted_days[0]:]['Beta'].values 
+    actual_Beta = np.nan_to_num(actual_Beta, neginf=0, posinf=0)
     predicted_beta = predicted_beta[:actual_Beta.shape[0]]
+    predicted_beta = np.nan_to_num(predicted_beta, neginf=0, posinf=0)
     rmse_Beta = rmse(actual_Beta, predicted_beta)   
 
     # display boundary of switch 
@@ -88,7 +91,7 @@ def plot_one(ax,
                         alpha=0.6, label='$\mu \pm 3\sigma$' if day == 0 else '')
 
     # display actual and predicted Infected values
-    ax.plot(seed_df.index, seed_df.iloc[:]['I'].values , color='tab:blue', 
+    ax.plot(seed_df.index, seed_df['I'].values , color='tab:blue', 
             label='Actual I')
     ax.plot(predicted_days, predicted_I[0],color='red', ls='-', 
               alpha=0.9, label='Predicted I (det.)')
@@ -106,11 +109,13 @@ def plot_one(ax,
     if len(beggining_beta) > 0:
         given_days = np.arange(predicted_days[0])
         ax_b.plot(given_days, beggining_beta,color='green', ls='--', 
-                  alpha=0.7, label='Predicted Beta ')
+                  alpha=0.7)
     ax_b.plot(predicted_days, predicted_beta,color='green', ls='--', 
               alpha=0.7, label='Predicted Beta ')
     ax_b.set_ylabel("Beta", color='gray')
 
+    ax_b.set_ylim(0, np.max(actual_Beta[:100])*1.1)
+    
     # add legend and titles
     lines1, labels1 = ax.get_legend_handles_labels()
     lines2, labels2 = ax_b.get_legend_handles_labels()
@@ -128,7 +133,8 @@ def plot_one(ax,
 def main_f(I_prediction_method, stochastic, count_stoch_line, 
            beta_prediction_method, type_start_day, seed_numbers,
            show_fig_flag, seed_dirs='test/', sigma=0.1, gamma=0.08,
-           ax = None, model_path=''):
+           ax = None, model_path='', perc_switch=0.01,
+          is_filename=False):
     '''
     Main function
     
@@ -180,7 +186,13 @@ def main_f(I_prediction_method, stochastic, count_stoch_line,
     for idx, seed_number in enumerate(seed_numbers):
         #print(seed_number)
         # read the DataFrame of the seed: S,[E],I,R,Beta
-        seed_df = pd.read_csv(seed_number)
+        if is_filename:
+            seed_df = pd.read_csv(seed_dirs+seed_number.split('\\')[-1])
+            window_size = 7
+        else:
+            seed_df = pd.read_csv(seed_dirs+f'seir_seed_{seed_number}.csv')
+            window_size = 7
+            
         seed_df = seed_df.iloc[:,:5].copy()
         seed_df.columns = ['S','E','I','R','Beta']
         
@@ -189,13 +201,18 @@ def main_f(I_prediction_method, stochastic, count_stoch_line,
         if end_df.shape[0]:
             seed_df = seed_df.iloc[:end_df.index[0]].copy()
         
-        if seed_df['I'].max() < 10000:
+        if seed_df['I'].max() < 10:
             pass
         else:
-            
             # switch moment
-            
-            start_day = choice_start_day.choose_method(seed_df, type_start_day)
+            pop = seed_df.iloc[0,:4].sum()
+            n_people = pop*perc_switch
+            #if idx==0:
+            #    print(pop, perc_switch, n_people)
+                      
+            start_day = choice_start_day.choose_method(seed_df, type_start_day,
+                                                       min_day=window_size,
+                                                       n_people=n_people)
             # ЗА сколько ДО пика
             if not isinstance(type_start_day, str):
                 start_day = seed_df.I.argmax() - start_day
@@ -209,7 +226,7 @@ def main_f(I_prediction_method, stochastic, count_stoch_line,
             beggining_beta, predicted_beta, predicted_I = predict_Beta_I.predict_beta(
                                 I_prediction_method, seed_df, beta_prediction_method, 
                                 predicted_days, stochastic, count_stoch_line, sigma, gamma,
-                                features_reg, model_path)
+                                features_reg, model_path, window_size)
 
             if (beta_prediction_method != 'regression (day, SEIR, previous I)') & (
                 beta_prediction_method != 'lstm (day, E, previous I)'):

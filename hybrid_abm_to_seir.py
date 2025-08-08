@@ -237,14 +237,7 @@ class ABC_Agent:
             return pd.DataFrame()
         
         print(f"Running ABM ABC rejection with {n_samples} samples...")
-        '''
-        param_bounds = {
-            'alpha': (self.hm_results['alpha'].min(), 
-                      self.hm_results['alpha'].max()),
-            'lmbd': (self.hm_results['lmbd'].min(), 
-                     self.hm_results['lmbd'].max())
-        }
-        '''
+        
         param_bounds = {
             'alpha': (self.hm_results['alpha'].quantile(.25), 
                       self.hm_results['alpha'].quantile(.75)),
@@ -376,10 +369,10 @@ class ABC_Agent:
         }
         '''
         param_bounds = {
-            'alpha': (self.hm_results['alpha'].quantile(.25), 
-                      self.hm_results['alpha'].quantile(.75)),
-            'lmbd': (self.hm_results['lmbd'].quantile(.25), 
-                     self.hm_results['lmbd'].quantile(.75))
+            'alpha': (self.hm_results['alpha'].quantile(.1), 
+                      self.hm_results['alpha'].quantile(.9)),
+            'lmbd': (self.hm_results['lmbd'].quantile(.1), 
+                     self.hm_results['lmbd'].quantile(.9))
         }
         
         particles = []
