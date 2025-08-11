@@ -358,7 +358,7 @@ def plots(idata, data, title, simulation_func, with_trace=True,
                          color='skyblue', alpha=.5, label=f'CI {ci*100:.0f}%')
 
         ax[i].set_xlabel('Day')
-        ax[i].set_ylabel('Newly infected')
+        ax[i].set_ylabel('Infected')
         
         ax[i].set_xlim(-5, np.where(data==0)[0][0]*1.1)
         ax[i].grid()

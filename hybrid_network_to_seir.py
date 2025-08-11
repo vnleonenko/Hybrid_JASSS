@@ -88,12 +88,12 @@ class NetworkSEIR_tuned:
         # FOR FULL OBSERVED DATA
         ts = np.arange(self.tmax-switch_day)
         if method=='expanding':
-            beta = sim_data.iloc[:,:switch_day+1]['Beta'
+            beta = sim_data.iloc[:switch_day+1]['Beta'
                                     ].expanding(1).mean().values[-1]
         elif method=='last':
-            beta = sim_data.iloc[:,:switch_day+1]['Beta'].values[-1]
+            beta = sim_data.iloc[:switch_day+1]['Beta'].values[-1]
         elif method=='rolling':
-            beta = sim_data.iloc[:,:switch_day+1]['Beta'
+            beta = sim_data.iloc[:switch_day+1]['Beta'
                                     ].rolling(7).mean().values[-1]
             
         # Median from HM accepted parameters' trajectories!
@@ -114,7 +114,7 @@ class NetworkSEIR_tuned:
         return fin
     
     
-    def simulator_function(self, tau, rho, with_switch=False, 
+    def simulator_function(self, tau, alpha, with_switch=False, 
                            num_runs=1, frac=0.01, method='expanding'):
         """Run SEIR network simulation with given tau, rho and fixed alpha, gamma"""
         self.frac = frac
@@ -123,17 +123,18 @@ class NetworkSEIR_tuned:
         network_model = SEIRNetworkModel(self.network_params['n_nodes'],
                                          self.network_params['network_type'], 
                                          chosen_seed)
-        #print(self.network_params['n_nodes'], self.network_params['network_type'])
+
+        init_inf_frac = 0.01
         self.tmax = len(self.observed_data) - 1
         # fraction of initially recovered
-        init_rec_frac = 0
+        init_rec_frac = 1 - alpha
         
         all_results = []
         for run in range(num_runs):
             res = network_model.simulate(beta=tau, 
                                          gamma=self.fixed_sigma, 
                                          delta=self.fixed_gamma, 
-                                         init_inf_frac=rho, 
+                                         init_inf_frac=init_inf_frac, 
                                          init_rec_frac=init_rec_frac,
                                          tmax=self.tmax)
 
@@ -199,6 +200,8 @@ class NetworkSEIR_tuned:
         """
         print(f"Running Network SEIR history matching with {n_samples} samples...")
         
+        p0, p1 = ['tau', 'alpha']
+        
         if prepared:
             # берем файлы по уникальным параметрам
             files = glob.glob('new_ba_10000/*.csv')
@@ -227,9 +230,9 @@ class NetworkSEIR_tuned:
                 # берем значения параметров    
                 params = file.split('\\')[-1].split('_')
                 sample_tau = float(params[1])
-                sample_rho = float(params[4])
+                sample_alpha = float(params[5])
                 # store trajectory data
-                result = [sample_tau, sample_rho, distance, trajectory]
+                result = [sample_tau, sample_alpha, distance, trajectory]
                 
                 results.append(result)
             
@@ -238,14 +241,14 @@ class NetworkSEIR_tuned:
             for _ in range(n_samples):
                 sample = {}
                 for param, (min_val, max_val) in prior_ranges.items():
-                    if param in ['tau', 'rho']:
+                    if param in [p0, p1]:
                         sample[param] = uniform.rvs(loc=min_val, 
                                                     scale=max_val-min_val)
                 samples.append(sample)
 
             results = []
             for sample in tqdm(samples):
-                sim_data = self.simulator_function(sample["tau"], sample["rho"])
+                sim_data = self.simulator_function(sample[p0], sample[p1])
                 
                 distance = self.calculate_distance(sim_data)
                 
@@ -253,11 +256,11 @@ class NetworkSEIR_tuned:
                 if sim_data is not None:
                     trajectory = sim_data["I"].copy()
 
-                result = [sample["tau"], sample["rho"], distance, trajectory]    
+                result = [sample[p0], sample[p1], distance, trajectory]    
                 results.append(result)
         
         results_df = pd.DataFrame(results)
-        results_df.columns = ['tau','rho','distance','trajectory']
+        results_df.columns = [p0, p1,'distance','trajectory']
         
         if adaptive:
             n_accept = max(1, int(len(results_df) * accept_ratio))
@@ -341,18 +344,25 @@ class NetworkSEIR_tuned:
                 for i in range(n_best):
                     new_weights[sorted_indices[i]] = 1.0
                 new_weights = new_weights / np.sum(new_weights)
+            
                 
             ESS = 1.0 / np.sum(new_weights**2)
             print(f"Effective sample size: {ESS:.1f}")
             
+            print(particles)
             if ESS < n_particles / 2:
-                indices = np.random.choice(n_particles, size=n_particles, p=new_weights)
+                indices = np.random.choice(n_particles, 
+                                           size=n_particles, 
+                                           p=new_weights)
                 particles = [particles[i] for i in indices]
                 trajectories = [trajectories[i] for i in indices]
                 weights = np.ones(n_particles) / n_particles
             else:
                 weights = new_weights
-               
+            
+            print(n_particles, n_particles, new_weights)
+            print(particles)
+            
             #weights = new_weights
             if t < n_populations - 1:
                 param_values = np.array([[p[p0], p[p1]] for p in particles])
@@ -393,7 +403,7 @@ class NetworkSEIR_tuned:
     
     
 def generate_synthetic_data(tau=0.3, sigma=0.1, gamma=0.08, 
-                                 rho=0.01, tmax=99, 
+                                 alpha=0.01, tmax=99, 
                                  network_params=None, model_type='network'):
     """
     Generate synthetic SEIR epidemic data with known parameters

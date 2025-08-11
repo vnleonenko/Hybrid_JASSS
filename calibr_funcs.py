@@ -614,7 +614,7 @@ def generate_synthetic_data(alpha=0.78, lmbd=0.4, days=range(1, 100),
 
 def plot_results(observed_data, abc_results, 
                  method_name='', n_trajectories=5,
-                 true_alpha=0, true_lmbd=0, hm_results=[]):
+                 true_p0=0, true_p1=0, hm_results=[]):
     """
     Plot parameter posterior and time series comparison
     """
@@ -643,7 +643,7 @@ def plot_results(observed_data, abc_results,
                                   abc_results[param_names[1]], 
                                   alpha=0.6, s=s, label='Accepted')    
         # 'true' parameters    
-        axes[0].scatter(true_alpha, true_lmbd, alpha=0.6, 
+        axes[0].scatter(true_p0, true_p1, alpha=0.6, 
                         color='black', label='Observed', s=50)
 
         axes[0].set_title(f"Accepted parameters - {method_name}")
@@ -703,7 +703,7 @@ def plot_results(observed_data, abc_results,
                      kde=True, stat='probability', edgecolor=None, 
                      ax=axes[2])
         
-        axes[2].axvline(true_alpha, ls='--', color='black',
+        axes[2].axvline(true_p0, ls='--', color='black',
                         label='Observed')
         axes[2].set_title(f"{param_names[0]}, posterior destribution")
         axes[2].set_xlabel(f'{param_names[0]}')
@@ -716,7 +716,7 @@ def plot_results(observed_data, abc_results,
                      color='tab:blue', bins=min(abc_results.shape[0]+1, 30), 
                      kde=True, stat='probability', edgecolor=None, 
                      ax=axes[3])
-        axes[3].axvline(true_lmbd, ls='--', color='black',
+        axes[3].axvline(true_p1, ls='--', color='black',
                         label='Observed')
         axes[3].set_title(f"{param_names[1]}, posterior destribution")
         axes[3].set_xlabel(f'{param_names[1]}')
