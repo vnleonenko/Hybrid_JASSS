@@ -24,12 +24,15 @@ class SEIRNetworkModel():
         self.last_sim_params = None
         
         if ntype=='ba':
-            self.G = nx.barabasi_albert_graph(population, 8, seed=chosen_seed)
+            self.G = nx.barabasi_albert_graph(population, 5, seed=chosen_seed)
+            print('ba')
         elif ntype=='sw':
-            self.G = nx.watts_strogatz_graph(population, 8, 0.1, seed=chosen_seed)
+            self.G = nx.watts_strogatz_graph(population, 5, 0.1, seed=chosen_seed)
+            print('sw')
         elif ntype=='r':
             # чтобы средняя степень была 8
-            self.G = nx.fast_gnp_random_graph(population, 8/population, seed=chosen_seed)
+            self.G = nx.fast_gnp_random_graph(population, 5/population, seed=chosen_seed)
+            print('r')
         
         
     @staticmethod
@@ -39,11 +42,16 @@ class SEIRNetworkModel():
         return idx
 
     
-    def transform_event_times_to_days(self, model_output, tmax):
+    def transform_event_times_to_days(self, model_output, tmax,
+                                      I_frac_switch):
         indices = []
         for day in range(tmax):
             index = self.find_nearest_idx(model_output.t, day)
             indices.append(index)
+            if model_output.I[index] > self.population*I_frac_switch:
+                print(day)
+                break
+            
         new_model_output = SEIRModelOutput(model_output.t[indices], 
                                            model_output.S[indices],
                                            model_output.E[indices], 
@@ -54,7 +62,7 @@ class SEIRNetworkModel():
     
     def simulate(self, beta=1/7*1.5, gamma=1/2, delta=1/7, 
                  init_inf_frac=1e-4, init_rec_frac=0.15, 
-                 tmax: int = 150):
+                 tmax: int = 150, I_frac_switch=1):
         '''
         Parameters:
 
@@ -78,13 +86,15 @@ class SEIRNetworkModel():
             "Incorrect initial conditions, immune + infected > population size!"
         for node in range(initial_recovered):
             initial_status[node+initial_infected] = 'R'
-        self.result = \
-            self.transform_event_times_to_days(
-                SEIRModelOutput(*EoN.Gillespie_simple_contagion(self.G, H, J, 
-                                                        initial_status,
-                                                        return_statuses=('S', 'E', 
-                                                                         'I', 'R'), 
-                                                                tmax=tmax)), 
-            tmax)
+            
+        seir_o = SEIRModelOutput(*EoN.Gillespie_simple_contagion(
+                                        self.G, H, J, initial_status,
+                                        return_statuses=('S', 'E', 
+                                                         'I', 'R'),
+                                        tmax=tmax,
+                                        I_frac_switch=I_frac_switch)
+                                 )
+        self.result = self.transform_event_times_to_days(seir_o, tmax,
+                                                         I_frac_switch)
         
         return self.result

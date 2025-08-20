@@ -12,7 +12,6 @@ from tqdm import tqdm
 from scipy.stats import uniform, norm, multivariate_normal
 from scipy.integrate import odeint
 
-import copy
 import warnings
 import shutil
 import time
@@ -55,8 +54,7 @@ class NetworkSEIR_tuned:
         
         print(f"Network SEIR - Fixed parameters: "+\
               f"sigma = {self.fixed_sigma}, gamma = {self.fixed_gamma}")
-        print("Calibrating parameters: tau (transmission rate),"+\
-              f" rho (initial infection fraction)")
+        print("Calibrating parameters")
     
     
     def generate_network(self):
@@ -65,13 +63,13 @@ class NetworkSEIR_tuned:
         network_type = self.network_params['network_type']
         
         if network_type == 'ba':
-            return nx.barabasi_albert_graph(population, 8, 
+            return nx.barabasi_albert_graph(population, 5, 
                                             seed=chosen_seed)
         elif network_type == 'sm':
-            return nx.watts_strogatz_graph(population, 8, 0.1, 
+            return nx.watts_strogatz_graph(population, 5, 0.1, 
                                            seed=chosen_seed)
         elif network_type == 'r':
-            return nx.fast_gnp_random_graph(population, 8/population, 
+            return nx.fast_gnp_random_graph(population, 5/population, 
                                             seed=chosen_seed)
         else:
             raise ValueError(f"Unknown network type: {network_type}")
@@ -79,21 +77,26 @@ class NetworkSEIR_tuned:
             
     def switch_seir(self, sim_data, method='expanding'):
         pop = sim_data.iloc[0,:4].sum()
+        
+        '''
         switches = sim_data[sim_data['I'] > pop*self.frac]
         if switches.shape[0]:
             switch_day = switches.index[0]
         else:
-            switch_day = 7
+            switch_day = 0
+        '''    
+        switch_day = sim_data.shape[0]-1
         y0 = sim_data.iloc[switch_day,:4].values.flatten()
         # FOR FULL OBSERVED DATA
+        
         ts = np.arange(self.tmax-switch_day)
         if method=='expanding':
-            beta = sim_data.iloc[:switch_day+1]['Beta'
+            beta = sim_data.iloc[:switch_day]['Beta'
                                     ].expanding(1).mean().values[-1]
         elif method=='last':
-            beta = sim_data.iloc[:switch_day+1]['Beta'].values[-1]
+            beta = sim_data.iloc[:switch_day]['Beta'].values[-1]
         elif method=='rolling':
-            beta = sim_data.iloc[:switch_day+1]['Beta'
+            beta = sim_data.iloc[:switch_day]['Beta'
                                     ].rolling(7).mean().values[-1]
             
         # Median from HM accepted parameters' trajectories!
@@ -115,7 +118,9 @@ class NetworkSEIR_tuned:
     
     
     def simulator_function(self, tau, alpha, with_switch=False, 
-                           num_runs=1, frac=0.01, method='expanding'):
+                           num_runs=1, frac=1, 
+                           init_inf_frac=0.0001,
+                           method='expanding'):
         """Run SEIR network simulation with given tau, rho and fixed alpha, gamma"""
         self.frac = frac
         #try:
@@ -124,7 +129,6 @@ class NetworkSEIR_tuned:
                                          self.network_params['network_type'], 
                                          chosen_seed)
 
-        init_inf_frac = 0.01
         self.tmax = len(self.observed_data) - 1
         # fraction of initially recovered
         init_rec_frac = 1 - alpha
@@ -136,7 +140,8 @@ class NetworkSEIR_tuned:
                                          delta=self.fixed_gamma, 
                                          init_inf_frac=init_inf_frac, 
                                          init_rec_frac=init_rec_frac,
-                                         tmax=self.tmax)
+                                         tmax=self.tmax,
+                                         I_frac_switch = frac)
 
             seed_df = pd.DataFrame([res.S, res.E, res.I, res.R]).T
             seed_df.columns = ['S','E','I','R']
@@ -154,15 +159,22 @@ class NetworkSEIR_tuned:
                 if 'Beta' not in seed_df.columns:
                     print(seed_df.columns)
                 seed_df = self.switch_seir(seed_df, method=method)
-                
+            
+            # calculating incidence
+            temp = seed_df[['E','S']].shift([0,1])
+            seed_df['incidence'] = (temp['E_1'] - temp['E_0']) - \
+                                (temp['S_0'] - temp['S_1'])
+            seed_df['incidence'].fillna(0, inplace=True)
             all_results.append(seed_df)  
             
         if all_results:
             combined_results = pd.concat(all_results, 
                                          ignore_index=True)
             seed_df = combined_results.groupby('day').mean().reset_index()
-            seed_df[['S','E','I','R']] = seed_df[['S','E','I','R']].round()
-                
+            seed_df[['S','E','I','R',
+                    'incidence']] = seed_df[['S','E','I','R',
+                                             'incidence']].round()
+            
         return seed_df
         '''    
         except Exception as e:
@@ -179,9 +191,9 @@ class NetworkSEIR_tuned:
         try:
             min_len = min(len(self.observed_data), len(sim_data))
             
-            obs = self.observed_data['I'].values[:min_len]
+            obs = self.observed_data['incidence'].values[:min_len]
             
-            sim = sim_data['I'].values[:min_len]
+            sim = sim_data['incidence'].values[:min_len]
             
             distance = np.mean((obs - sim)**2)
             return distance
@@ -204,28 +216,34 @@ class NetworkSEIR_tuned:
         
         if prepared:
             # берем файлы по уникальным параметрам
-            files = glob.glob('new_ba_10000/*.csv')
-            u_files = pd.Series(files).apply(lambda x: x.split('_seed')[0]
-                                            ).unique()
+            u_files = glob.glob('../new_sw_100000/*.csv')[::10]
             
+            random.seed(42)
+            u_files = random.sample(u_files,n_samples)
             results = []
             for file in tqdm(u_files, desc="Network History Matching"):
                 # берем все сиды для одного набора параметров и усредняем
-                seeds = glob.glob(f'{file}*.csv')
+                seeds = glob.glob(f'{file[:-4]}*.csv')
                 all_results = []
                 for seed in seeds:
-                    seed_df = pd.read_csv(seed)[['I']].reset_index()
-                    all_results.append(seed_df)
+                    seed_df = pd.read_csv(seed, usecols=['E','S']
+                                         ).reset_index()
+                    
+                    temp = seed_df[['E','S']].shift([0,1])
+                    seed_df['incidence'] = (temp['E_1'] - temp['E_0']) - \
+                                        (temp['S_0'] - temp['S_1'])
+                    seed_df['incidence'].fillna(0, inplace=True)
+                    all_results.append(seed_df[['index','incidence']])
                     
                 combined_results = pd.concat(all_results, ignore_index=True)
-                combined_results.columns=['day', 'I']
+                combined_results.columns=['day', 'incidence']
                 sim_data = combined_results.groupby('day').mean().reset_index()  
                 distance = self.calculate_distance(sim_data)
                 
                 # add trajectory to results dictionary
                 trajectory = []
                 if sim_data is not None:
-                    trajectory = sim_data["I"].values.tolist()
+                    trajectory = sim_data["incidence"].values.tolist()
                     
                 # берем значения параметров    
                 params = file.split('\\')[-1].split('_')
@@ -254,7 +272,7 @@ class NetworkSEIR_tuned:
                 
                 trajectory = []
                 if sim_data is not None:
-                    trajectory = sim_data["I"].copy()
+                    trajectory = sim_data["incidence"]
 
                 result = [sample[p0], sample[p1], distance, trajectory]    
                 results.append(result)
