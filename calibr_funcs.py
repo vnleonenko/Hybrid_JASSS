@@ -39,14 +39,15 @@ def plot_results(observed_data, abc_results,
         
         scatter = axes[0].scatter(abc_results[param_names[0]], 
                                   abc_results[param_names[1]], 
-                                  alpha=0.6, s=s, label='Accepted')    
+                                  alpha=0.6, s=s, label='Accepted',
+                                 color='RoyalBlue')    
         # 'true' parameters    
-        axes[0].scatter(true_p0, true_p1, alpha=0.6, 
-                        color='black', label='Observed', s=50)
+        axes[0].scatter(true_p0, true_p1, alpha=0.9, 
+                        color='OrangeRed', label='Observed', s=50)
 
         axes[0].set_title(f"Accepted parameters - {method_name}")
-        axes[0].set_xlabel(param_names[0])
-        axes[0].set_ylabel(param_names[1])
+        axes[0].set_xlabel(r'$\beta$')
+        axes[0].set_ylabel(r'$\alpha$')
         
         if len(hm_results):
             axes[0].set_xlim(hm_results[param_names[0]].quantile(.2),
@@ -65,7 +66,7 @@ def plot_results(observed_data, abc_results,
                 label='Accepted trajectory'
             else:
                 label=''
-            axes[1].plot(traj, alpha=0.4, label=label)
+            axes[1].plot(traj, alpha=0.1, label=label, color='RoyalBlue')
            
         #print(abc_results.iloc[0]["trajectory"])
         '''
@@ -75,7 +76,7 @@ def plot_results(observed_data, abc_results,
         # plot time series (of observed)
         axes[1].plot(#np.tile(observed_data["H1N1"], 5), 
                     observed_data[observed_clm],
-                     label="Observed", color="black", linestyle="--")
+                     label="Observed", color="OrangeRed", marker='.', linestyle="-")
         axes[1].set_title("Time series comparison")
         axes[1].set_xlabel("Time")
         axes[1].set_ylabel("Infected")
@@ -92,32 +93,32 @@ def plot_results(observed_data, abc_results,
         plt.style.use("default")
         '''
         axes[2].hist(abc_results[param_names[0]], alpha=0.4, color='gray')
-        sns.kdeplot(abc_results[param_names[0]], color="tab:blue", 
+        sns.kdeplot(abc_results[param_names[0]], color="RoyalBlue", 
                     shade=True, ax=axes[2])
         '''
         
         sns.histplot(abc_results[param_names[0]], alpha=0.4, 
-                     color='tab:blue', bins=min(abc_results.shape[0]+1, 30), 
+                     color='RoyalBlue', bins=min(abc_results.shape[0]+1, 30), 
                      kde=True, stat='probability', edgecolor=None, 
                      ax=axes[2])
         
-        axes[2].axvline(true_p0, ls='--', color='black',
+        axes[2].axvline(true_p0, ls='--', color='OrangeRed',
                         label='Observed')
-        axes[2].set_title(f"{param_names[0]}, posterior destribution")
-        axes[2].set_xlabel(f'{param_names[0]}')
+        axes[2].set_title(r'$\beta$'+", posterior destribution")
+        axes[2].set_xlabel(r'$\beta$')
         axes[2].legend()
         axes[2].grid()
 
         # ____ Posterior destribution of parameter 2 ____
         plt.style.use("default")
         sns.histplot(abc_results[param_names[1]], alpha=0.4, 
-                     color='tab:blue', bins=min(abc_results.shape[0]+1, 30), 
+                     color='RoyalBlue', bins=min(abc_results.shape[0]+1, 30), 
                      kde=True, stat='probability', edgecolor=None, 
                      ax=axes[3])
-        axes[3].axvline(true_p1, ls='--', color='black',
+        axes[3].axvline(true_p1, ls='--', color='OrangeRed',
                         label='Observed')
-        axes[3].set_title(f"{param_names[1]}, posterior destribution")
-        axes[3].set_xlabel(f'{param_names[1]}')
+        axes[3].set_title(r'$\alpha$'+", posterior destribution")
+        axes[3].set_xlabel(r'$\alpha$')
         axes[3].legend()
         axes[3].grid()
 

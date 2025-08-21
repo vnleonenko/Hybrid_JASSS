@@ -338,15 +338,16 @@ def plots(idata, data, title, simulation_func, with_trace=True,
         
         # posterior predictive lines
         ax[i].plot(np.array(sim_part).reshape(-1,len(data_part)).T, 
-                 color='tab:blue', alpha=0.1) 
+                 color='RoyalBlue', alpha=0.1) 
         # ppc median
         ax[i].plot(sim_part.quantile(q=.5, dim=['chain', 'draw']),
                  color='lightgray', lw=2,
-                 label=f'median (R^2 = {r2_part:.3f})')
+                 label=r'median ($R^2$' +f' = {r2_part:.3f})')
 
         # real data
-        ax[i].plot(data_part, "o", ls='', color='brown', 
-                   markeredgecolor='white', label='real data')
+        ax[i].plot(data_part, ".", ls='-', color='OrangeRed', 
+                   #markeredgecolor='white', 
+                   label='real data')
 
         ci = .95
         # posterior predictive ci
@@ -358,7 +359,7 @@ def plots(idata, data, title, simulation_func, with_trace=True,
                          color='skyblue', alpha=.5, label=f'CI {ci*100:.0f}%')
 
         ax[i].set_xlabel('Day')
-        ax[i].set_ylabel('Infected')
+        ax[i].set_ylabel('Incidence')
         
         ax[i].set_xlim(-5, data.shape[0])#np.where(data==0)[0][0]*1.1)
         ax[i].grid()
