@@ -189,6 +189,7 @@ class NetworkSEIR_tuned:
             return np.inf
         
         try:
+            
             min_len = min(len(self.observed_data), len(sim_data))
             
             obs = self.observed_data['incidence'].values[:min_len]
@@ -205,7 +206,8 @@ class NetworkSEIR_tuned:
     
     def history_matching(self, prior_ranges, n_samples=100, 
                          epsilon=1000, adaptive=False, accept_ratio=0.2,
-                         prepared=True, folder='../new_sw_100000/'):
+                         prepared=True, folder='../new_sw_100000/',
+                        file='../sim_data/data_sw_100000.csv'):
         """
         History matching to find plausible parameter regions 
         for tau and rho only
@@ -215,6 +217,7 @@ class NetworkSEIR_tuned:
         p0, p1 = ['tau', 'alpha']
         
         if prepared:
+            '''
             # берем файлы по уникальным параметрам
             u_files = glob.glob(f'{folder}*.csv')[::10]
             
@@ -253,6 +256,52 @@ class NetworkSEIR_tuned:
                 result = [sample_tau, sample_alpha, distance, trajectory]
                 
                 results.append(result)
+            '''
+            
+            d = pd.read_csv(file, index_col=0)#.iloc[::10]
+            if 'init_rec_frac' in d.columns:
+                d.rename(columns={'init_rec_frac':'alpha'}, inplace=True)
+            d.drop(columns=['gamma','delta','init_inf_frac'], inplace=True)
+            
+            beta_arr = np.arange(0.1, 1, 0.01) #np.arange(0.04, 0.09, 0.01)
+            alpha_arr = np.arange(0.2, 1, 0.01) #np.arange(0.005, 0.011, 0.001)
+            
+            i = 0
+            results=[]
+            for beta in beta_arr:
+                beta = round(beta,2)
+                for alpha in alpha_arr:
+                    alpha = round(alpha,2)
+                    #print(chosen.iloc[:,:2].values, beta, alpha)
+                    
+                    if d.shape[1]>200:
+                        s = self.observed_data.shape[0]
+                        chosen = d.iloc[i:i+1]#d[(d.beta>=beta)&(d.alpha>=alpha)]
+                        incidence = np.array([chosen.iloc[:1,2:2+s].values[0],
+                                     chosen.iloc[:1,2+s:2+2*s].values[0],
+                                     chosen.iloc[:1,2+2*s:2+3*s].values[0]]).mean(0)
+                        
+                    else:
+                        incidence = d.iloc[i*10:i*10+10,2:].mean()
+                    i+=1
+                    sim_data = pd.DataFrame(incidence, columns=['incidence'])
+                    distance = self.calculate_distance(sim_data)
+
+                    # add trajectory to results dictionary
+                    trajectory = []
+                    if sim_data is not None:
+                        trajectory = sim_data["incidence"].values.tolist()
+
+                    # берем значения параметров    
+                    params = file.split('\\')[-1].split('_')
+                    sample_tau = beta
+                    sample_alpha = alpha
+                    # store trajectory data
+                    result = [sample_tau, sample_alpha, distance, trajectory]
+
+                    results.append(result)
+                    if len(results) > n_samples:
+                        break
             
         else:
             samples = []
