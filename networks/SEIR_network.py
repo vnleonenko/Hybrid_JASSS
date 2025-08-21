@@ -25,14 +25,14 @@ class SEIRNetworkModel():
         
         if ntype=='ba':
             self.G = nx.barabasi_albert_graph(population, 5, seed=chosen_seed)
-            print('ba')
+            #print('ba')
         elif ntype=='sw':
             self.G = nx.watts_strogatz_graph(population, 5, 0.1, seed=chosen_seed)
-            print('sw')
+            #print('sw')
         elif ntype=='r':
             # чтобы средняя степень была 8
             self.G = nx.fast_gnp_random_graph(population, 5/population, seed=chosen_seed)
-            print('r')
+            #print('r')
         
         
     @staticmethod
@@ -49,7 +49,7 @@ class SEIRNetworkModel():
             index = self.find_nearest_idx(model_output.t, day)
             indices.append(index)
             if model_output.I[index] > self.population*I_frac_switch:
-                print(day)
+                #print(day)
                 break
             
         new_model_output = SEIRModelOutput(model_output.t[indices], 

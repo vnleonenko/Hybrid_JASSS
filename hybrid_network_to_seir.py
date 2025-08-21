@@ -205,7 +205,7 @@ class NetworkSEIR_tuned:
     
     def history_matching(self, prior_ranges, n_samples=100, 
                          epsilon=1000, adaptive=False, accept_ratio=0.2,
-                         prepared=True):
+                         prepared=True, folder='../new_sw_100000/'):
         """
         History matching to find plausible parameter regions 
         for tau and rho only
@@ -216,7 +216,7 @@ class NetworkSEIR_tuned:
         
         if prepared:
             # берем файлы по уникальным параметрам
-            u_files = glob.glob('../new_sw_100000/*.csv')[::10]
+            u_files = glob.glob(f'{folder}*.csv')[::10]
             
             random.seed(42)
             u_files = random.sample(u_files,n_samples)

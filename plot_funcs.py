@@ -360,7 +360,7 @@ def plots(idata, data, title, simulation_func, with_trace=True,
         ax[i].set_xlabel('Day')
         ax[i].set_ylabel('Infected')
         
-        ax[i].set_xlim(-5, np.where(data==0)[0][0]*1.1)
+        ax[i].set_xlim(-5, data.shape[0])#np.where(data==0)[0][0]*1.1)
         ax[i].grid()
         ax[i].set_title(title)
         ax[i].legend();
