@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from matplotlib.gridspec import GridSpec
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 import os
@@ -8,6 +9,7 @@ from main_pool import Main
 import multiprocessing as mp
 from functools import partial
 import seaborn as sns 
+import plot_funcs
 
 
 def plot_results(observed_data, abc_results, 
@@ -122,4 +124,61 @@ def plot_results(observed_data, abc_results,
         axes[3].legend()
         axes[3].grid()
 
+    plt.tight_layout()
+
+
+
+    
+    
+def posterior_params(gs, idata, observed_data, true_tau, true_alpha):
+    #plt.style.use("default")
+    
+    fig = plt.figure(figsize=(10,6))
+    
+    observed_clm = observed_data.columns[0]
+    n_chains = idata.sample_stats.chain.shape[0]
+    
+    #_____________
+    ax_i = plt.subplot(gs[0, 1:3])
+    for i in range(n_chains):
+        ax_i.scatter(idata.posterior.tau[i], 
+                      idata.posterior.alpha[i], 
+                      alpha=1/(n_chains+1), s=40, label='Accepted',
+                     color='RoyalBlue')    
+    # 'true' parameters    
+    ax_i.scatter(true_tau, true_alpha, alpha=0.9, 
+                    color='OrangeRed', label='Observed', s=50)
+
+    ax_i.set_title(f"Accepted parameters")
+    ax_i.set_xlabel(r'$\beta$')
+    ax_i.set_ylabel(r'$\alpha$')
+    
+    #_____________
+    ax_i = plt.subplot(gs[1, 0:2])
+    for i in range(n_chains):
+        sns.histplot(idata.posterior.tau[i], alpha=1/(n_chains+1), 
+                         color='RoyalBlue', bins=30,
+                         kde=True, stat='probability', edgecolor=None, 
+                         ax = ax_i)
+    ax_i.axvline(true_tau, ls='--', color='OrangeRed',
+                        label='Observed')
+    ax_i.set_title(r'$\beta$'+", posterior destribution")
+    ax_i.set_xlabel(r'$\beta$')
+    ax_i.legend()
+    ax_i.grid()
+
+    # ____ Posterior destribution of parameter 2 ____
+    ax_i = plt.subplot(gs[1, 2:4])
+    for i in range(n_chains):
+        sns.histplot(idata.posterior.alpha[i], alpha=1/(n_chains+1), 
+                     color='RoyalBlue', bins=30,
+                     kde=True, stat='probability', edgecolor=None, 
+                     ax = ax_i)
+    ax_i.axvline(true_alpha, ls='--', color='OrangeRed',
+                    label='Observed')
+    ax_i.set_title(r'$\alpha$'+", posterior destribution")
+    ax_i.set_xlabel(r'$\alpha$')
+    ax_i.legend()
+    ax_i.grid()
+    
     plt.tight_layout()

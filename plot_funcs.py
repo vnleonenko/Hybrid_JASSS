@@ -7,6 +7,7 @@ from tqdm.notebook import tqdm, trange
 from timeit import default_timer as timer
 import pymc as pm
 import arviz as az
+import seaborn as sns 
 
 
 def count_4_metrics(idata, max_data_len, 
@@ -311,8 +312,8 @@ def pred_plot_ax(ax, title, data_train, data_test,
 
 # _____________________ FOR CALIBRATION    
 
-def plots(idata, data, title, simulation_func, with_trace=True, 
-          show_values=True, for_pred=False, return_r2=False):
+def plots(idata, data, title, with_trace=False, 
+          show_values=True, for_pred=False, return_r2=False, ax=None):
 
     sim_value = idata.posterior_predictive.sim
     posterior = idata.posterior.stack(samples=("draw", "chain"))
@@ -320,9 +321,9 @@ def plots(idata, data, title, simulation_func, with_trace=True,
     model_time = [data.shape[0]]
     alpha_len = 1
     x = np.arange(model_time[0])
-    
-    fig, ax = plt.subplots(1,alpha_len, sharex=True, 
-                           sharey=True, figsize=(6,3))
+    if ax is None:
+        fig, ax = plt.subplots(1,alpha_len, sharex=True, 
+                               sharey=True, figsize=(6,3))
     # чтобы работало и при одном ax
     ax = np.array([ax]).flatten()
     # для каждой возрастной группы
@@ -342,12 +343,12 @@ def plots(idata, data, title, simulation_func, with_trace=True,
         # ppc median
         ax[i].plot(sim_part.quantile(q=.5, dim=['chain', 'draw']),
                  color='lightgray', lw=2,
-                 label=r'median ($R^2$' +f' = {r2_part:.3f})')
+                 label=r'Median ($R^2$' +f' = {r2_part:.3f})')
 
         # real data
         ax[i].plot(data_part, ".", ls='-', color='OrangeRed', 
                    #markeredgecolor='white', 
-                   label='real data')
+                   label='Observed')
 
         ci = .95
         # posterior predictive ci
@@ -357,8 +358,8 @@ def plots(idata, data, title, simulation_func, with_trace=True,
                          y2=sim_part.quantile(q=round(0.5 + ci/2, 3), 
                                               dim=['chain', 'draw']),
                          color='skyblue', alpha=.5, label=f'CI {ci*100:.0f}%')
-
-        ax[i].set_xlabel('Day')
+        ax[i].set_title("Time series comparison")
+        ax[i].set_xlabel('Time')
         ax[i].set_ylabel('Incidence')
         
         ax[i].set_xlim(-5, data.shape[0])#np.where(data==0)[0][0]*1.1)
@@ -373,7 +374,71 @@ def plots(idata, data, title, simulation_func, with_trace=True,
         pm.plot_trace(idata);
         az.plot_posterior(idata);
         return az.summary(idata)
+    
+    
+def results_calib(observed_data, idata, 
+                 true_tau, true_alpha, method_name='ABC SMC'):
+    """
+    Plot parameter posterior and time series comparison
+    """
+    import seaborn as sns # for now; cant reload 
+    
+    plt.style.use("default")
+    fig, axes = plt.subplots(2, 2, figsize=(10, 8))
+    axes = axes.flatten()
+    observed_clm = observed_data.columns[0]
+    results = idata.posterior
+    n_chains = idata.sample_stats.chain.shape[0]
+    
+    param_names = ['tau','alpha']   
+    fancy_names = [r'$\beta$', r'$\alpha$']
+    
+    # ____ Accepted parameters ____
+    ax_i = axes[0]
+    label='Value'
+    for i in range(n_chains):
+        ax_i.scatter(results[param_names[0]], 
+                     results[param_names[1]],
+                      alpha=1/(n_chains+1), s=40, label=label,
+                     color='RoyalBlue')    
+        label=''
+    # 'true' parameters    
+    ax_i.scatter(true_tau, true_alpha, alpha=0.9, 
+                    color='OrangeRed', label='Observed', s=50)
+    
 
+    ax_i.set_title(f"Values from posterior destribution - {method_name}")
+    ax_i.set_xlabel(fancy_names[0])
+    ax_i.set_ylabel(fancy_names[1])
+
+    ax_i.legend()
+    ax_i.grid()
+    
+    # ____ curves
+    ax_i = axes[1]
+    plots(idata, observed_data['incidence'].values, '', 
+           ax=ax_i)
+    ax_i.set_title('Time series comparison')
+    
+    # _______ Posterior destribution 
+    for i, pname, fname, pval in zip(np.arange(2),
+                               param_names, fancy_names,
+                              [true_tau, true_alpha]):
+        
+        ax_i = axes[i+2]
+        for c in range(n_chains):
+            sns.histplot(idata.posterior[pname][c], alpha=1/(n_chains+1), 
+                         color='RoyalBlue', bins=30, kde=True,
+                         stat='probability', edgecolor=None, ax = ax_i)
+        ax_i.axvline(pval, ls='--', color='OrangeRed',
+                            label='Observed')
+        ax_i.set_title(fname+", posterior destribution")
+        ax_i.set_xlabel(fname)
+        ax_i.legend()
+        ax_i.grid()
+
+    plt.tight_layout()    
+    
     
 def fig_for_subplot(ax, idata, data, year, simulation_func,
                     cal_model, with_rho=False, 
