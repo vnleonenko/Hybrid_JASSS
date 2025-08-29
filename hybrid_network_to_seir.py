@@ -195,7 +195,7 @@ class NetworkSEIR_tuned:
             obs = self.observed_data['incidence'].values[:min_len]
             
             sim = sim_data['incidence'].values[:min_len]
-            
+            # mse
             distance = np.mean((obs - sim)**2)
             return distance
         

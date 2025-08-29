@@ -43,15 +43,32 @@ class SEIRNetworkModel():
 
     
     def transform_event_times_to_days(self, model_output, tmax,
-                                      I_frac_switch):
+                                      I_frac_switch, frac_pop):
         indices = []
-        for day in range(tmax):
+        
+        if I_frac_switch < 1:
+            max_day = model_output.t[-1].round().astype(int) + 1
+        else:
+            max_day = tmax
+            
+        for day in range(max_day):
             index = self.find_nearest_idx(model_output.t, day)
             indices.append(index)
-            if model_output.I[index] > self.population*I_frac_switch:
-                #print(day)
-                break
             
+            '''
+            if frac_pop == 'Infected':
+                if model_output.I[index
+                             ] > self.population*I_frac_switch:
+                    break
+            elif (frac_pop == 'Incidence'
+                 ) & (len(indices)>1):
+                # Inc_t = (E_t-1 - E_t) - (S_t - S_t-1)
+                pday = indices[day-1]
+                inc = (model_output.E[pday]-model_output.E[index]
+                      ) - (model_output.S[index]- model_output.S[pday])
+                if inc > self.population*I_frac_switch:
+                    break
+            '''
         new_model_output = SEIRModelOutput(model_output.t[indices], 
                                            model_output.S[indices],
                                            model_output.E[indices], 
@@ -62,7 +79,7 @@ class SEIRNetworkModel():
     
     def simulate(self, beta=1/7*1.5, gamma=1/2, delta=1/7, 
                  init_inf_frac=1e-4, init_rec_frac=0.15, 
-                 tmax: int = 150, I_frac_switch=1):
+                 tmax: int = 150, I_frac_switch=1, frac_pop='Infected'):
         '''
         Parameters:
 
@@ -92,9 +109,13 @@ class SEIRNetworkModel():
                                         return_statuses=('S', 'E', 
                                                          'I', 'R'),
                                         tmax=tmax,
-                                        I_frac_switch=I_frac_switch)
+                                        I_frac_switch=I_frac_switch,
+                                        frac_pop=frac_pop)
                                  )
-        self.result = self.transform_event_times_to_days(seir_o, tmax,
-                                                         I_frac_switch)
         
-        return self.result
+        self.result = \
+            self.transform_event_times_to_days(seir_o, tmax,
+                                               I_frac_switch,
+                                               frac_pop)
+        
+        return self.result, seir_o.t, seir_o.I
