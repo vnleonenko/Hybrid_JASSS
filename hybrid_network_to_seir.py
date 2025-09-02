@@ -197,6 +197,8 @@ class NetworkSEIR_tuned:
             sim = sim_data['incidence'].values[:min_len]
             # mse
             distance = np.mean((obs - sim)**2)
+            
+            distance = np.mean(abs((obs - sim))) 
             return distance
         
         except Exception as e:
