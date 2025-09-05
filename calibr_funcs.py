@@ -5,12 +5,168 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 import os
 from scipy.stats import uniform, norm, multivariate_normal
-from main_pool import Main
 import multiprocessing as mp
 from functools import partial
 import seaborn as sns 
 import plot_funcs
+from networks.model_output import SEIRModelOutput, SEIRParams
+from networks.SEIR_network import SEIRNetworkModel
 
+from hybrid_network_to_seir import NetworkSEIR_tuned,\
+                                    generate_synthetic_data
+import seir_discrete
+import predict_Beta_I
+#pip install -e git+https://github.com/Mpkosh/Mathematics-of-Epidemics-on-Networks.git@my_changes#egg=eon
+
+
+def switch_seir(sim_data, gamma=0.1, delta=0.08,
+                frac=0.01, modeling_duration=249, 
+                method='expanding'):
+    
+    pop = sim_data.iloc[0,:4].sum()
+    '''
+    switches = sim_data[sim_data['I'] > pop*frac]
+    
+    if switches.shape[0]:
+        switch_day = switches.index[0]
+    else:
+        switch_day = 7
+    '''
+    if sim_data.shape[0]>1:
+        switch_day = sim_data.shape[0]-1
+    else:
+        switch_day = 1
+    #print(switch_day)
+    y0 = sim_data.iloc[switch_day,:4].values.flatten()
+    # FOR FULL OBSERVED DATA
+    ts = np.arange(modeling_duration-switch_day)
+    if method=='expanding':
+        beta = sim_data.iloc[:switch_day]['Beta'
+                                ].expanding(1).mean().values[-1]
+    elif method=='last':
+        beta = sim_data.iloc[:switch_day]['Beta'].values[-1]
+        
+        S,E,I,R = seir_discrete.seir_model(y0, ts, beta, 
+                                           gamma, delta, 
+                                           stype='d', 
+                                           beta_t=False).T
+    elif method=='lstm':
+        _, beta, _ = predict_Beta_I.predict_beta('', 
+                      sim_data,
+                     'lstm', 
+                     np.arange(switch_day, 
+                               modeling_duration),                                         stochastic=False,
+                            count_stoch_line=0, 
+                 sigma=0, gamma=0, 
+                     model_path='ba100k_lstm_4_001_s10', 
+                     window_size=4,
+                    modeling_duration=modeling_duration)
+
+        S,E,I,R = seir_discrete.seir_model(y0, ts, beta, 
+                                           gamma, delta, 
+                                           stype='d', 
+                                           beta_t=True).T
+
+    fin = pd.DataFrame([S,E,I,R]).T
+    fin.columns = ['S','E','I','R']
+
+    fin['Beta'] = beta
+    fin['day'] = ts+switch_day
+    fin = pd.concat([sim_data.iloc[:switch_day], fin]
+                   ).reset_index(drop=True)
+    return fin
+
+
+def simulation_func(rng, tau, alpha, modeling_duration, 
+                    with_switch=False, num_runs=[1], 
+                    frac=[0.01], with_df=False,
+                    size=None):
+    
+    tau = np.array(tau).flatten()[0]
+    alpha = np.array(alpha).flatten()[0]
+    
+    modeling_duration = np.array(size).flatten()[0]#np.array(modeling_duration).flatten()[0]
+    #print(modeling_duration)
+    #print(tau, alpha, modeling_duration, frac, size)
+    num_runs = np.array(num_runs).flatten()[0] 
+    frac = np.array(frac).flatten()[0] 
+    
+    method='lstm'
+    network_type='ba'    
+    gamma = 0.3
+    delta=0.2
+    n_nodes=100000
+    
+    chosen_seed = np.random.RandomState(42)
+    network_model = SEIRNetworkModel(n_nodes, network_type, 
+                                     chosen_seed)
+    init_inf_frac = 0.0001
+    init_rec_frac = 1 - alpha
+
+    all_results = []
+    for run in range(np.array(num_runs).flatten()[0]):
+        res,rt,ri = network_model.simulate(beta=tau, gamma=gamma, delta=delta, 
+                                     init_inf_frac=init_inf_frac, 
+                                     init_rec_frac=init_rec_frac,
+                                     tmax=modeling_duration,
+                                     I_frac_switch=frac,
+                                     frac_pop='Infected'
+                                    )
+        #print(res.I.shape)
+        seed_df = pd.DataFrame([res.S, res.E, res.I, res.R]).T
+        seed_df.columns = ['S','E','I','R']
+        seed_df['day'] = np.arange(seed_df.shape[0])
+        # use "values", because "iloc" saves index info 
+        # and messes with the calculation
+        beta_calc = - seed_df.S.diff().values[1:] / (
+                                seed_df.S.values[:-1] * seed_df.I.values[:-1]
+                                )
+        # the last Beta value cannot be calculated: no S_{t+1}
+        seed_df['Beta'] = [*beta_calc, beta_calc[-1]] 
+        #print(seed_df.Beta.iloc[-3:].values)
+        s = seed_df.shape[0]
+        #print(s)
+        seed_df.fillna(0, inplace=True)
+        
+        if res.I.shape[0] < modeling_duration:
+            if np.array(with_switch).flatten()[0]:
+                seed_df = switch_seir(seed_df, 
+                                      gamma=gamma,
+                                      delta=delta,
+                                      
+                                      frac=np.array(frac
+                                        ).flatten()[0],
+                                          modeling_duration=modeling_duration, 
+                                      method=method)
+        # sometimes seed_df.shape[0] > modeling duration (is 150, not 149!)
+        #print('seed_df ',seed_df.shape)
+        # calculating incidence
+        temp = seed_df[['E','S']].shift([0,1])
+        seed_df['incidence'] = (temp['E_1'] - temp['E_0']) - \
+                            (temp['S_0'] - temp['S_1'])
+        #print(seed_df.iloc[s-5:s+2])
+        seed_df['incidence'].fillna(0, inplace=True)
+        all_results.append(seed_df)    
+
+    if all_results:
+        combined_results = pd.concat(all_results, 
+                                     ignore_index=True)
+        seed_df = combined_results.groupby('day').mean().reset_index()
+        seed_df[['S','E','I','R',
+                    'incidence']] = seed_df[['S','E','I','R',
+                                             'incidence']].round()
+    
+    #print(seed_df['incidence'].astype(int))
+    res = seed_df['incidence'
+                 ].fillna(0).astype(int).values[:modeling_duration]
+    #res = stz(res)
+    
+    if np.array(with_df).flatten()[0]:
+        return res, seed_df
+    else:
+        return res
+    
+    
 
 def plot_results(observed_data, abc_results, 
                  method_name='', n_trajectories=5,

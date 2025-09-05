@@ -17,7 +17,6 @@ import shutil
 import time
 warnings.filterwarnings('ignore')
 #from agent_based_model import load_data, preprocess_data
-from main_pool import Main
 
 from networks.model_output import SEIRModelOutput, SEIRParams
 from networks.SEIR_network import SEIRNetworkModel
