@@ -85,7 +85,7 @@ def simulation_func(rng, tau, alpha, modeling_duration,
     tau = np.array(tau).flatten()[0]
     alpha = np.array(alpha).flatten()[0]
     
-    modeling_duration = np.array(size).flatten()[0]#np.array(modeling_duration).flatten()[0]
+    modeling_duration = np.array(modeling_duration).flatten()[0]#np.array(modeling_duration).flatten()[0]
     #print(modeling_duration)
     #print(tau, alpha, modeling_duration, frac, size)
     num_runs = np.array(num_runs).flatten()[0] 
