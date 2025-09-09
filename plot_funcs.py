@@ -41,14 +41,6 @@ def plots(idata, data, title, with_trace=False,
                                         frac=frac, 
                                         size=[data.shape[0]])
 
-            q_n = calibr_funcs.simulation_func(1, tau=[p0_mode], 
-                                    alpha=[p1_mode], 
-                                    modeling_duration=[data.shape[0]], 
-
-                                    with_switch=[False],
-                                    num_runs=[1], 
-                                    frac=[1.], 
-                                    size=[data.shape[0]])
     
     model_time = [data.shape[0]]
     alpha_len = 1
@@ -64,12 +56,11 @@ def plots(idata, data, title, with_trace=False,
     i = 0
     # posterior predictive lines
     l0 = ax[i].plot(sim_part[:switchpoint], 
-                    color='gray', alpha=0.3) 
-
+                    color='gray', alpha=0.05) 
     l00 = ax[i].plot(np.arange(switchpoint, 
                                data.shape[0]),
                      sim_part[switchpoint:], 
-                    color='RoyalBlue', alpha=0.2) 
+                    color='RoyalBlue', alpha=0.05) 
     next_c = 'green'
     
     if with_switch and not pred:
@@ -83,16 +74,6 @@ def plots(idata, data, title, with_trace=False,
                  color='green', lw=2, ls='-',
                  label=r'Hybrid ($R^2$' +f' = {r2_part:.3f})')
         next_c='blue'
-
-        # from mode params
-        r2_part = r2_score(data_part, 
-                             q_n)
-        ax[i].plot(q_n,
-                 color='white', lw=4, ls='-',
-                 )
-        l11=ax[i].plot(q_n,
-                 color=next_c, lw=2, ls='-',
-                 label=r'Network ($R^2$' +f' = {r2_part:.3f})')
     
 
     # real data
