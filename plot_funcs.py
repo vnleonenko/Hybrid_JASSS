@@ -21,7 +21,6 @@ def plots(idata, data, title, with_trace=False,
     if pred:
         sim_value = idata.predictions.sim
         switchpoint = idata.constant_data.incidence.shape[0]
-        print(1)
     else:
         sim_value = idata.posterior_predictive.sim
         switchpoint=0
@@ -59,63 +58,74 @@ def plots(idata, data, title, with_trace=False,
                                sharey=True, figsize=(6,3))
     # чтобы работало и при одном ax
     ax = np.array([ax]).flatten()
-    # для каждой возрастной группы
-    for i in range(1):
-        data_part = data
-        sim_part = sim_value.stack(samples=("draw", "chain"))
-        
-        # posterior predictive lines
-        l0 = ax[i].plot(sim_part[:switchpoint], 
-                        color='gray', alpha=0.3) 
-        l00 = ax[i].plot(np.arange(switchpoint, data.shape[0]),
-                         sim_part[switchpoint:], 
-                        color='RoyalBlue', alpha=0.3) 
-        next_c = 'green'
-        
-        if with_switch and not pred:
-            print(2)
-            # from mode params
-            r2_part = r2_score(data_part, 
-                                 q)
-            ax[i].plot(q,
-                     color='white', lw=4, ls='-',
-                     )
-            l1=ax[i].plot(q,
-                     color='green', lw=2, ls='-',
-                     label=r'Hybrid ($R^2$' +f' = {r2_part:.3f})')
-            next_c='blue'
-        
-            # from mode params
-            r2_part = r2_score(data_part, 
-                                 q_n)
-            ax[i].plot(q_n,
-                     color='white', lw=4, ls='-',
-                     )
-            l11=ax[i].plot(q_n,
-                     color=next_c, lw=2, ls='-',
-                     label=r'Network ($R^2$' +f' = {r2_part:.3f})')
-        
-        
-        # real data
-        ax[i].plot(data_part, "", ls='-', lw=4, 
-                  color='white')
-        l2=ax[i].plot(data_part[:switchpoint], "o", ls='', 
-                      color='OrangeRed', lw=2)
-        l2=ax[i].plot(np.arange(switchpoint, data.shape[0]),
-                      data_part[switchpoint:], "o", ls='', 
-                      color='green', lw=2,
-                   label='True incidence')
-        ax[i].axvline(switchpoint, ls=':', color='gray',
-                     lw=3)        
-        ax[i].set_title("Time series comparison")
-        ax[i].set_xlabel('Time')
-        ax[i].set_ylabel('Incidence')
-        
-        ax[i].set_xlim(-5, data.shape[0])#np.where(data==0)[0][0]*1.1)
-        ax[i].grid()
-        ax[i].set_title(title)
-        ax[i].legend();
+
+    data_part = data
+    sim_part = sim_value.stack(samples=("draw", "chain"))
+    i = 0
+    # posterior predictive lines
+    l0 = ax[i].plot(sim_part[:switchpoint], 
+                    color='gray', alpha=0.3) 
+
+    l00 = ax[i].plot(np.arange(switchpoint, 
+                               data.shape[0]),
+                     sim_part[switchpoint:], 
+                    color='RoyalBlue', alpha=0.2) 
+    next_c = 'green'
     
+    if with_switch and not pred:
+        # from mode params
+        r2_part = r2_score(data_part, 
+                             q)
+        ax[i].plot(q,
+                 color='white', lw=4, ls='-',
+                 )
+        l1=ax[i].plot(q,
+                 color='green', lw=2, ls='-',
+                 label=r'Hybrid ($R^2$' +f' = {r2_part:.3f})')
+        next_c='blue'
+
+        # from mode params
+        r2_part = r2_score(data_part, 
+                             q_n)
+        ax[i].plot(q_n,
+                 color='white', lw=4, ls='-',
+                 )
+        l11=ax[i].plot(q_n,
+                 color=next_c, lw=2, ls='-',
+                 label=r'Network ($R^2$' +f' = {r2_part:.3f})')
+    
+
+    # real data
+    '''
+    ax[i].plot(data_part, "", ls='-', lw=4, 
+              color='white')
+    '''
+    l2=ax[i].scatter(np.arange(switchpoint), 
+                     data_part[:switchpoint], 
+
+                  color='green', s=30,
+                 edgecolors='white', zorder=99)
+
+    l3=ax[i].scatter(np.arange(switchpoint, 
+                               data.shape[0]),
+                  data_part[switchpoint:], 
+                  color='OrangeRed', s=20,
+               label='True incidence',
+                 edgecolors='white',
+                    alpha=1, zorder=99)
+
+
+    ax[i].axvline(switchpoint, ls=':', color='gray',
+                 lw=3)        
+    ax[i].set_title("Time series comparison")
+    ax[i].set_xlabel('Time')
+    ax[i].set_ylabel('Incidence')
+
+    #ax[i].set_xlim(-5, data.shape[0])#np.where(data==0)[0][0]*1.1)
+    ax[i].grid()
+    ax[i].set_title(title)
+    ax[i].legend();
+
     if return_r2:
         return r2_part
     
@@ -124,7 +134,26 @@ def plots(idata, data, title, with_trace=False,
         az.plot_posterior(idata);
         return az.summary(idata)
     
-    
+
+def calc_stat(posterior, param_names):
+    rr = 2
+    p0_mode = stats.mode(posterior[param_names[0]
+                                  ].round(rr))[0]
+    p1_mode = stats.mode(posterior[param_names[1]
+                                  ].round(rr))[0]
+    p0_mode = posterior[param_names[0]
+                       ].quantile(.5).values
+    p1_mode = posterior[param_names[1]
+                       ].quantile(.5).values
+    '''
+    p0_mode = posterior[param_names[0]
+                       ].mean().values
+    p1_mode = posterior[param_names[1]
+                       ].mean().values
+    '''
+    return p0_mode, p1_mode
+
+
 def results_calib(observed_data, idata, 
                  true_tau, true_alpha, network_params,
                   method_name='ABC SMC'
@@ -138,43 +167,43 @@ def results_calib(observed_data, idata,
     fig, axes = plt.subplots(2, 2, figsize=(10, 8))
     axes = axes.flatten()
     observed_clm = observed_data.columns[0]
-    results = idata.posterior
+    #results = idata.posterior
     n_chains = idata.sample_stats.chain.shape[0]
     
     param_names = ['tau','alpha']   
     fancy_names = [r'$\beta$', r'$\alpha$']
     
     posterior = idata.posterior.stack(samples=("draw", "chain"))
-    rr = 2
-    p0_mode = stats.mode(posterior[param_names[0]].round(rr))[0]
-    p1_mode = stats.mode(posterior[param_names[1]].round(rr))[0]
-    
+    p0_mode, p1_mode = calc_stat(posterior, param_names)
     
     # ____ Accepted parameters ____
     ax_i = axes[0]
     label='Value'
-    for i in range(n_chains):
-        ax_i.scatter(results[param_names[0]], 
-                     results[param_names[1]],
-                      alpha=1/(n_chains+1), s=40, label=label,
-                     color='RoyalBlue')    
-        label=''
+    #for i in range(n_chains):
+    ax_i.scatter(posterior[param_names[0]], 
+                 posterior[param_names[1]],
+                  alpha=.2, s=40, label='Value',
+                 color='RoyalBlue')    
     # 'true' parameters   
+    '''
     ax_i.scatter(true_tau, true_alpha, alpha=0.9, 
                     color='white',
                  s=60)
+    '''
     ax_i.scatter(true_tau, true_alpha, alpha=0.9, 
                     color='OrangeRed', label='Observed', 
-                 #edgecolors='white',
+                 edgecolors='white',
                  s=50)
     
     # __ mode params
+    '''
     ax_i.scatter(p0_mode, p1_mode, alpha=0.9, 
                     color='white',
                  s=60)
+    '''
     ax_i.scatter(p0_mode, p1_mode, alpha=0.9, 
-                    color='green', label='Param mode', 
-                 #markeredgecolor='white',
+                    color='green', label='Chosen', 
+                 edgecolors='white',
                  s=50)
 
     ax_i.set_title(f"Values from posterior distribution - {method_name}")
@@ -192,17 +221,22 @@ def results_calib(observed_data, idata,
           network_params=network_params)
     ax_i.set_title('Time series comparison')
     
-    
+    lims=[]
     # _______ Posterior distribution 
     for i, pname, fname, pval, pmode in zip(np.arange(2),
-                               param_names, fancy_names,
-                              [true_tau, true_alpha],
-                              [p0_mode,p1_mode]):
+                               param_names[::-1],
+                                fancy_names[::-1],
+                              [true_tau, true_alpha][::-1],
+                              [p0_mode,p1_mode][::-1]):
         
         ax_i = axes[i+2]
-        sns.histplot(posterior[pname], alpha=0.5, 
+        q = sns.histplot(posterior[pname], alpha=0.5, 
                      color='RoyalBlue', bins=50, kde=False,
                      stat='probability', edgecolor=None, ax = ax_i)
+        
+        vals = [c.get_height() for c in q.containers[0].patches]
+        lims.append(max(vals))
+
         ax_i.set_ylabel('Frequency')
         ax_i.axvline(pval, ls='--', color='white',
                             lw=4)
@@ -212,24 +246,28 @@ def results_calib(observed_data, idata,
         ax_i.axvline(pmode, ls='--', color='white',
                             lw=4)
         ax_i.axvline(pmode, ls='--', color='green',
-                      lw=2,  label='Mode')
+                      lw=2,  label='Chosen')
         ax_i.set_title(fname+", posterior distribution")
         ax_i.set_xlabel(fname)
         ax_i.legend()
         ax_i.grid()
-
-    plt.tight_layout()    
+    
+    for i in range(2):
+        ax_i = axes[i+2]
+        ax_i.set_ylim(0, max(lims)*1.1)
+        
+    plt.tight_layout()
     
 
 def pred_calib(observed_data, idata, 
                  true_tau, true_alpha, network_params,
-                  method_name='ABC SMC', pred=False,
+                  method_name='ABC SMC'
                  ):
     """
     Plot parameter posterior and time series comparison
     """
     
-    
+    pred=True 
     plt.style.use("default")
     fig, axes = plt.subplots(2, 2, figsize=(10, 8))
     axes = axes.flatten()
@@ -241,10 +279,7 @@ def pred_calib(observed_data, idata,
     fancy_names = [r'$\beta$', r'$\alpha$']
     
     posterior = idata.posterior.stack(samples=("draw", "chain"))
-    rr = 2
-    p0_mode = stats.mode(posterior[param_names[0]].round(rr))[0]
-    p1_mode = stats.mode(posterior[param_names[1]].round(rr))[0]
-    
+    p0_mode, p1_mode = calc_stat(posterior, param_names)
     
     # ____ Accepted parameters ____
     ax_i = axes[0]
@@ -290,15 +325,21 @@ def pred_calib(observed_data, idata,
     
     
     # _______ Posterior distribution 
+    lims = []
     for i, pname, fname, pval, pmode in zip(np.arange(2),
-                               param_names, fancy_names,
-                              [true_tau, true_alpha],
-                              [p0_mode,p1_mode]):
+                               param_names[::-1], 
+                                fancy_names[::-1],
+                              [true_tau, true_alpha][::-1],
+                              [p0_mode,p1_mode][::-1]):
         
         ax_i = axes[i+2]
-        sns.histplot(posterior[pname], alpha=0.5, 
+        q = sns.histplot(posterior[pname], alpha=0.5, 
                      color='RoyalBlue', bins=50, kde=False,
                      stat='probability', edgecolor=None, ax = ax_i)
+        
+        vals = [c.get_height() for c in q.containers[0].patches]
+        lims.append(max(vals))
+
         ax_i.set_ylabel('Frequency')
         ax_i.axvline(pval, ls='--', color='white',
                             lw=4)
@@ -313,5 +354,8 @@ def pred_calib(observed_data, idata,
         ax_i.set_xlabel(fname)
         ax_i.legend()
         ax_i.grid()
-
+    
+    for i in range(2):
+        ax_i.set_ylim(max(lims)*1.1)
+        
     plt.tight_layout()     
