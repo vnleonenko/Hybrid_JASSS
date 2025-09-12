@@ -29,17 +29,16 @@ def plots(idata, data, title, with_trace=False,
     
     with_switch,num_runs,frac,gamma,delta,n_nodes = network_params
     
-    if with_switch:
-        if not pred:
+    if not pred:
         #num_runs=1
-            q = calibr_funcs.simulation_func(1, tau=[p0_mode], 
-                                        alpha=[p1_mode], 
-                                        modeling_duration=[data.shape[0]], 
+        q = calibr_funcs.simulation_func(1, tau=[p0_mode], 
+                                    alpha=[p1_mode], 
+                                    modeling_duration=[data.shape[0]], 
 
-                                        with_switch=with_switch,
-                                        num_runs=num_runs, 
-                                        frac=frac, 
-                                        size=[data.shape[0]])
+                                    with_switch=with_switch,
+                                    num_runs=num_runs, 
+                                    frac=frac, 
+                                    size=[data.shape[0]])
 
     
     model_time = [data.shape[0]]
@@ -63,7 +62,7 @@ def plots(idata, data, title, with_trace=False,
                     color='RoyalBlue', alpha=0.05) 
     next_c = 'green'
     
-    if with_switch and not pred:
+    if not pred:
         # from mode params
         r2_part = r2_score(data_part, 
                              q)
@@ -72,7 +71,7 @@ def plots(idata, data, title, with_trace=False,
                  )
         l1=ax[i].plot(q,
                  color='green', lw=2, ls='-',
-                 label=r'Hybrid ($R^2$' +f' = {r2_part:.3f})')
+                 label=r'Simulation ($R^2$' +f' = {r2_part:.3f})')
         next_c='blue'
     
 
@@ -95,8 +94,8 @@ def plots(idata, data, title, with_trace=False,
                  edgecolors='white',
                     alpha=1, zorder=99)
 
-
-    ax[i].axvline(switchpoint, ls=':', color='gray',
+    if switchpoint > 0:
+        ax[i].axvline(switchpoint, ls=':', color='gray',
                  lw=3)        
     ax[i].set_title("Time series comparison")
     ax[i].set_xlabel('Time')
@@ -122,11 +121,12 @@ def calc_stat(posterior, param_names):
                                   ].round(rr))[0]
     p1_mode = stats.mode(posterior[param_names[1]
                                   ].round(rr))[0]
+    '''
     p0_mode = posterior[param_names[0]
                        ].quantile(.5).values
     p1_mode = posterior[param_names[1]
                        ].quantile(.5).values
-    '''
+    
     p0_mode = posterior[param_names[0]
                        ].mean().values
     p1_mode = posterior[param_names[1]

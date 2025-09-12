@@ -115,6 +115,7 @@ def predict_beta(I_prediction_method, seed_df, beta_prediction_method, predicted
                      ].shift(np.arange(window_size)
                             ).iloc[predicted_days[0]].values
         inp = np.log(inp+1e-7)
+        inp = np.nan_to_num(inp, neginf=0, posinf=0)
         
         for i in inp[::-1]:
             predictor.update_buffer([i])
@@ -125,7 +126,7 @@ def predict_beta(I_prediction_method, seed_df, beta_prediction_method, predicted
                        modeling_duration):
             pred = predictor.predict_next()
             #print(pred)
-            if pred<0:
+            if (pred<0) or (pred == np.inf):
                 pred = 0
             predicted_beta.append(pred)
             predictor.update_buffer([np.log(pred+1e-7)])
