@@ -28,19 +28,7 @@ def plots(idata, data, title, with_trace=False,
     print(p0_mode,p1_mode)
     
     with_switch,num_runs,frac,gamma,delta,n_nodes = network_params
-    
-    if not pred:
-        #num_runs=1
-        q = calibr_funcs.simulation_func(1, tau=[p0_mode], 
-                                    alpha=[p1_mode], 
-                                    modeling_duration=[data.shape[0]], 
-
-                                    with_switch=with_switch,
-                                    num_runs=num_runs, 
-                                    frac=frac, 
-                                    size=[data.shape[0]])
-
-    
+    data_part = data
     model_time = [data.shape[0]]
     alpha_len = 1
     x = np.arange(model_time[0])
@@ -49,10 +37,11 @@ def plots(idata, data, title, with_trace=False,
                                sharey=True, figsize=(6,3))
     # чтобы работало и при одном ax
     ax = np.array([ax]).flatten()
-
-    data_part = data
-    sim_part = sim_value.stack(samples=("draw", "chain"))
     i = 0
+   
+    
+    sim_part = sim_value.stack(samples=("draw", "chain"))
+   
     # posterior predictive lines
     l0 = ax[i].plot(sim_part[:switchpoint], 
                     color='gray', alpha=0.05) 
@@ -62,18 +51,37 @@ def plots(idata, data, title, with_trace=False,
                     color='RoyalBlue', alpha=0.05) 
     next_c = 'green'
     
+    all_r = []
+    all_q = []    
     if not pred:
-        # from mode params
-        r2_part = r2_score(data_part, 
+        for j in range(10):
+        #num_runs=1
+            q = calibr_funcs.simulation_func(1, tau=[p0_mode], 
+                                    alpha=[p1_mode], 
+                                    modeling_duration=[data.shape[0]], 
+
+                                    with_switch=with_switch,
+                                    num_runs=num_runs, 
+                                    frac=frac, 
+                                    size=[data.shape[0]])
+            all_q.append(q)
+            r2_part = r2_score(data_part, 
                              q)
-        ax[i].plot(q,
-                 color='white', lw=4, ls='-',
+            all_r.append(r2_part)
+            
+            l1=ax[i].plot(q,
+                 color='lightgreen', lw=2, ls='-')
+            
+    best_idx = np.argmax(all_r)        
+    ax[i].plot(all_q[best_idx],
+                 color='white', lw=3, ls='-',
                  )
-        l1=ax[i].plot(q,
+    l1=ax[i].plot(all_q[best_idx],
                  color='green', lw=2, ls='-',
-                 label=r'Simulation ($R^2$' +f' = {r2_part:.3f})')
-        next_c='blue'
-    
+                 label=r'Best simulation ($R^2$' +\
+                  f' = {all_r[best_idx]:.3f})')
+        
+    next_c='blue'
 
     # real data
     '''
@@ -97,13 +105,13 @@ def plots(idata, data, title, with_trace=False,
     if switchpoint > 0:
         ax[i].axvline(switchpoint, ls=':', color='gray',
                  lw=3)        
-    ax[i].set_title("Time series comparison")
-    ax[i].set_xlabel('Time')
-    ax[i].set_ylabel('Incidence')
+    #ax[i].set_title("Time series comparison")
+    ax[i].set_xlabel('Time, days')
+    ax[i].set_ylabel('Incidence, cases')
 
     #ax[i].set_xlim(-5, data.shape[0])#np.where(data==0)[0][0]*1.1)
     ax[i].grid()
-    ax[i].set_title(title)
+    #ax[i].set_title(title)
     ax[i].legend();
 
     if return_r2:
@@ -145,7 +153,7 @@ def results_calib(observed_data, idata,
     
     
     plt.style.use("default")
-    fig, axes = plt.subplots(2, 2, figsize=(10, 8))
+    fig, axes = plt.subplots(2, 2, figsize=(10, 7))
     axes = axes.flatten()
     observed_clm = observed_data.columns[0]
     #results = idata.posterior
@@ -187,7 +195,7 @@ def results_calib(observed_data, idata,
                  edgecolors='white',
                  s=50)
 
-    ax_i.set_title(f"Values from posterior distribution - {method_name}")
+    #ax_i.set_title(f"Values from posterior distribution - {method_name}")
     ax_i.set_xlabel(fancy_names[0])
     ax_i.set_ylabel(fancy_names[1])
 
@@ -200,7 +208,7 @@ def results_calib(observed_data, idata,
            ax=ax_i, p0_mode=p0_mode,
           p1_mode=p1_mode, 
           network_params=network_params)
-    ax_i.set_title('Time series comparison')
+    #ax_i.set_title('Time series comparison')
     
     lims=[]
     # _______ Posterior distribution 
@@ -228,7 +236,7 @@ def results_calib(observed_data, idata,
                             lw=4)
         ax_i.axvline(pmode, ls='--', color='green',
                       lw=2,  label='Chosen')
-        ax_i.set_title(fname+", posterior distribution")
+        #ax_i.set_title(fname+", posterior distribution")
         ax_i.set_xlabel(fname)
         ax_i.legend()
         ax_i.grid()
