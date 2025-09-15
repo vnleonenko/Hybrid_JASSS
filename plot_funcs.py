@@ -49,12 +49,15 @@ def plots(idata, data, title, with_trace=False,
                                data.shape[0]),
                      sim_part[switchpoint:], 
                     color='RoyalBlue', alpha=0.05) 
+    ax[i].plot(np.arange(0, data.shape[0]),
+        sim_part[:,0], label='Simulation', alpha=0.5)
+
     next_c = 'green'
     
     all_r = []
     all_q = []    
     if not pred:
-        for j in range(10):
+        for j in range(1):
         #num_runs=1
             q = calibr_funcs.simulation_func(1, tau=[p0_mode], 
                                     alpha=[p1_mode], 
@@ -65,19 +68,23 @@ def plots(idata, data, title, with_trace=False,
                                     frac=frac, 
                                     size=[data.shape[0]])
             all_q.append(q)
-            r2_part = r2_score(data_part, 
-                             q)
+            r2_part = r2_score(data_part, q)
             all_r.append(r2_part)
             
-            l1=ax[i].plot(q,
-                 color='lightgreen', lw=2, ls='-')
-            
+            #l1=ax[i].plot(q,color='tab:green', lw=2, ls='-')
+    
+    ax[i].fill_between(x=np.arange(data.shape[0]),
+               y1 = np.array(all_q).min(axis=0),
+               y2 = np.array(all_q).max(axis=0),
+               color='tab:green', alpha=.5, zorder=99,
+               label='Simulations with chosen params')
+    
     best_idx = np.argmax(all_r)        
     ax[i].plot(all_q[best_idx],
                  color='white', lw=3, ls='-',
                  )
     l1=ax[i].plot(all_q[best_idx],
-                 color='green', lw=2, ls='-',
+                 color='tab:olive', lw=2, ls='-',
                  label=r'Best simulation ($R^2$' +\
                   f' = {all_r[best_idx]:.3f})')
         
@@ -113,6 +120,8 @@ def plots(idata, data, title, with_trace=False,
     ax[i].grid()
     #ax[i].set_title(title)
     ax[i].legend();
+    
+    #return all_q, all_r
 
     if return_r2:
         return r2_part
@@ -122,13 +131,28 @@ def plots(idata, data, title, with_trace=False,
         az.plot_posterior(idata);
         return az.summary(idata)
     
+    
 
-def calc_stat(posterior, param_names):
+def calc_stat(idata, posterior, param_names):
     rr = 2
+    ''''
     p0_mode = stats.mode(posterior[param_names[0]
                                   ].round(rr))[0]
     p1_mode = stats.mode(posterior[param_names[1]
                                   ].round(rr))[0]
+    
+    p0_mode = az.plots.plot_utils.calculate_point_estimate('mode',
+                   posterior[param_names[0]].values)
+    p1_mode = az.plots.plot_utils.calculate_point_estimate('mode',
+                   posterior[param_names[1]].values)
+    '''
+    print(az.hdi(idata.posterior[param_names[0]], 
+                     hdi_prob=0.01)[param_names[0]])
+    p0_mode = az.hdi(idata.posterior[param_names[0]], 
+                     hdi_prob=0.01)[param_names[0]].mean()
+    p1_mode = az.hdi(idata.posterior[param_names[1]], 
+                     hdi_prob=0.01)[param_names[1]].mean() 
+        
     '''
     p0_mode = posterior[param_names[0]
                        ].quantile(.5).values
@@ -153,17 +177,17 @@ def results_calib(observed_data, idata,
     
     
     plt.style.use("default")
-    fig, axes = plt.subplots(2, 2, figsize=(10, 7))
+    fig, axes = plt.subplots(2, 2, figsize=(10, 6))
     axes = axes.flatten()
     observed_clm = observed_data.columns[0]
     #results = idata.posterior
     n_chains = idata.sample_stats.chain.shape[0]
-    
+    66
     param_names = ['tau','alpha']   
-    fancy_names = [r'$\beta$', r'$\alpha$']
+    fancy_names = [r'$\beta_n$', r'$\alpha$']
     
     posterior = idata.posterior.stack(samples=("draw", "chain"))
-    p0_mode, p1_mode = calc_stat(posterior, param_names)
+    p0_mode, p1_mode = calc_stat(idata, posterior, param_names)
     
     # ____ Accepted parameters ____
     ax_i = axes[0]
@@ -171,7 +195,7 @@ def results_calib(observed_data, idata,
     #for i in range(n_chains):
     ax_i.scatter(posterior[param_names[0]], 
                  posterior[param_names[1]],
-                  alpha=.2, s=40, label='Value',
+                  alpha=.05, s=40, label='Value',
                  color='RoyalBlue')    
     # 'true' parameters   
     '''
