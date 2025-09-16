@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+from matplotlib.colors import to_rgba
 import numpy as np
 from sklearn.metrics import r2_score
 from sklearn.metrics import root_mean_squared_error as rmse
@@ -57,7 +58,7 @@ def plots(idata, data, title, with_trace=False,
     all_r = []
     all_q = []    
     if not pred:
-        for j in range(1):
+        for j in range(2):
         #num_runs=1
             q = calibr_funcs.simulation_func(1, tau=[p0_mode], 
                                     alpha=[p1_mode], 
@@ -81,12 +82,13 @@ def plots(idata, data, title, with_trace=False,
     
     best_idx = np.argmax(all_r)        
     ax[i].plot(all_q[best_idx],
-                 color='white', lw=3, ls='-',
-                 )
+                 color='white', lw=4, ls='-',
+                 zorder=98)
     l1=ax[i].plot(all_q[best_idx],
-                 color='tab:olive', lw=2, ls='-',
+                 color='tab:green', lw=2, ls='-',
                  label=r'Best simulation ($R^2$' +\
-                  f' = {all_r[best_idx]:.3f})')
+                  f' = {all_r[best_idx]:.3f})',
+                 zorder=99)
         
     next_c='blue'
 
@@ -99,7 +101,7 @@ def plots(idata, data, title, with_trace=False,
                      data_part[:switchpoint], 
 
                   color='green', s=30,
-                 edgecolors='white', zorder=99)
+                 edgecolors='white', zorder=100)
 
     l3=ax[i].scatter(np.arange(switchpoint, 
                                data.shape[0]),
@@ -107,7 +109,7 @@ def plots(idata, data, title, with_trace=False,
                   color='OrangeRed', s=20,
                label='True incidence',
                  edgecolors='white',
-                    alpha=1, zorder=99)
+                    alpha=1, zorder=100)
 
     if switchpoint > 0:
         ax[i].axvline(switchpoint, ls=':', color='gray',
@@ -146,8 +148,6 @@ def calc_stat(idata, posterior, param_names):
     p1_mode = az.plots.plot_utils.calculate_point_estimate('mode',
                    posterior[param_names[1]].values)
     '''
-    print(az.hdi(idata.posterior[param_names[0]], 
-                     hdi_prob=0.01)[param_names[0]])
     p0_mode = az.hdi(idata.posterior[param_names[0]], 
                      hdi_prob=0.01)[param_names[0]].mean()
     p1_mode = az.hdi(idata.posterior[param_names[1]], 
@@ -372,3 +372,102 @@ def pred_calib(observed_data, idata,
         ax_i.set_ylim(max(lims)*1.1)
         
     plt.tight_layout()     
+    
+
+def plot_calib(observed_data, idata, 
+               true_tau, true_alpha, 
+               network_params):
+    
+    # for edgecolor to have alpha
+    fc=to_rgba('RoyalBlue', 0.5)
+    param_names = ['tau','alpha']  
+    fancy_names = [r'$\beta_n$', r'$\alpha$']
+
+    fig = plt.figure(figsize=(10,5))
+    # adding gridspec
+    gs = fig.add_gridspec(1, 2, hspace=0.6, width_ratios=[1,1.25])
+    # dividing it even further!
+    gs0 = gs[0].subgridspec(2, 1, height_ratios=[1, 4], hspace=0.)
+    gs1 = gs[1].subgridspec(2, 2, wspace=0, hspace=0.,
+                            width_ratios=[5, 1],
+                            height_ratios=[1, 4])
+
+    # creating subplots, ignoring useless corners
+    ax_curves = fig.add_subplot(gs0[1])
+
+    ax_up = fig.add_subplot(gs1[0])
+    ax_scatter = fig.add_subplot(gs1[2], sharex=ax_up)
+    ax_right = fig.add_subplot(gs1[3], sharey=ax_scatter)
+
+    # plotting UFO
+    az.plot_pair(
+        idata,
+        var_names=["tau", "alpha"],
+        kind=["scatter", "kde"],
+        kde_kwargs={"fill_last": False, 
+                    'hdi_probs':[0.1,0.2,0.5,0.8,0.9],
+                    'fill_kwargs':{'alpha': .1},
+                    'contour_kwargs':{"colors":None},
+                    'contourf_kwargs':{"alpha":0}},
+        marginals=True,
+        #point_estimate="mode",
+        #reference_values={'tau':true_tau, 'alpha': true_alpha},
+        #reference_values_kwargs={'color':'red'},
+        marginal_kwargs={'kind':'hist','hist_kwargs':{'bins':50,
+                                                      'color':fc,
+                                                     #'alpha':.5,
+                                                     'ec':fc}},
+        ax=np.array([[ax_up,None],[ax_scatter,ax_right]])
+    )
+
+    # removing ticks from small plots
+    for a in [ax_up, ax_right]:
+        plt.setp(a.get_xticklabels(), visible=False)
+        plt.setp(a.get_yticklabels(), visible=False)
+    # setting normal ticks for a scatterplot
+    min_x = idata.posterior[param_names[0]].min().round(1)
+    min_y = idata.posterior[param_names[1]].min().round(1)
+    
+    ax_scatter.set_xticks(np.arange(min_x,1,0.2), 
+                          np.arange(min_x,1,0.2).round(1),
+                          fontsize=10)
+    ax_scatter.set_yticks(np.arange(min_y,1,0.1),
+                         np.arange(min_y,1,0.1).round(1),
+                          fontsize=10)
+
+
+    p0_mode, p1_mode = calc_stat(idata, idata.posterior, 
+                                 param_names)
+
+    # i don't know if there can be multiple ref points, so it's easier    
+    ax_scatter.scatter(true_tau, true_alpha, alpha=0.9, 
+                        color='OrangeRed', label='Observed', 
+                     edgecolors='white',
+                     s=50, zorder=99)
+
+    ax_scatter.scatter(p0_mode, p1_mode, alpha=0.9, 
+                        color='tab:green', label='Chosen', 
+                     edgecolors='white',
+                     s=50, zorder=99) 
+
+    ax_scatter.set_xlabel(fancy_names[0], fontsize=12)
+    ax_scatter.set_ylabel(fancy_names[1], fontsize=12)
+
+    ax_scatter.legend()
+    ax_scatter.grid()
+
+    ax_up.axvline(p0_mode, ls='-', color='white', lw=3)
+    ax_up.axvline(p0_mode, ls='--', color='tab:green')
+    ax_up.axvline(true_tau, ls='-', color='white', lw=3)
+    ax_up.axvline(true_tau, ls='--', color='OrangeRed')
+
+    ax_right.axhline(p1_mode, ls='-', color='white', lw=3)
+    ax_right.axhline(p1_mode, ls='--', color='tab:green')
+    ax_right.axhline(true_alpha, ls='-', color='white', lw=3)
+    ax_right.axhline(true_alpha, ls='--', color='OrangeRed')
+
+    plots(idata, observed_data, '',  
+          ax=ax_curves, p0_mode=p0_mode,p1_mode=p1_mode,
+          network_params=network_params)
+
+    plt.tight_layout()
