@@ -1,5 +1,8 @@
 import matplotlib.pyplot as plt
 from matplotlib.colors import to_rgba
+import matplotlib as mpl
+import matplotlib.patches as mpatches
+
 import numpy as np
 from sklearn.metrics import r2_score
 from sklearn.metrics import root_mean_squared_error as rmse
@@ -11,20 +14,26 @@ import arviz as az
 import seaborn as sns 
 import scipy.stats as stats
 import calibr_funcs
+from arviz.stats.density_utils import _fast_kde_2d, \
+                                      _find_hdi_contours
+from shapely.geometry import Polygon
 
 
 # _____________________ FOR CALIBRATION    
 
 def plots(idata, data, title, with_trace=False, 
-          show_values=True, for_pred=False, return_r2=False, 
+          show_values=True, return_r2=False, 
           ax=None, p0_mode=0,p1_mode=0,network_params=[], pred=False):
     param_names = ['tau','alpha']   
     if pred:
         sim_value = idata.predictions.sim
         switchpoint = idata.constant_data.incidence.shape[0]
+        fin_size = switchpoint+7
     else:
         sim_value = idata.posterior_predictive.sim
         switchpoint=0
+        fin_size = data.shape[0]
+        
     posterior = idata.posterior.stack(samples=("draw", "chain"))
     print(p0_mode,p1_mode)
     
@@ -47,12 +56,17 @@ def plots(idata, data, title, with_trace=False,
     l0 = ax[i].plot(sim_part[:switchpoint], 
                     color='gray', alpha=0.05) 
     l00 = ax[i].plot(np.arange(switchpoint, 
-                               data.shape[0]),
-                     sim_part[switchpoint:], 
+                               fin_size),
+                     sim_part[switchpoint:fin_size], 
                     color='RoyalBlue', alpha=0.05) 
-    ax[i].plot(np.arange(0, data.shape[0]),
-        sim_part[:,0], label='Simulation', alpha=0.5)
-
+    if pred:
+        label='Forecast'
+    else:
+        label='Simulation'
+        
+    ax[i].plot(np.arange(switchpoint, fin_size),
+            sim_part[switchpoint:fin_size,0], 
+                   label=label, alpha=0.5)
     next_c = 'green'
     
     all_r = []
@@ -74,21 +88,21 @@ def plots(idata, data, title, with_trace=False,
             
             #l1=ax[i].plot(q,color='tab:green', lw=2, ls='-')
     
-    ax[i].fill_between(x=np.arange(data.shape[0]),
-               y1 = np.array(all_q).min(axis=0),
-               y2 = np.array(all_q).max(axis=0),
-               color='tab:green', alpha=.5, zorder=99,
-               label='Simulations with chosen params')
-    
-    best_idx = np.argmax(all_r)        
-    ax[i].plot(all_q[best_idx],
-                 color='white', lw=4, ls='-',
-                 zorder=98)
-    l1=ax[i].plot(all_q[best_idx],
-                 color='tab:green', lw=2, ls='-',
-                 label=r'Best simulation ($R^2$' +\
-                  f' = {all_r[best_idx]:.3f})',
-                 zorder=99)
+        ax[i].fill_between(x=np.arange(data.shape[0]),
+                   y1 = np.array(all_q).min(axis=0),
+                   y2 = np.array(all_q).max(axis=0),
+                   color='tab:green', alpha=.5, zorder=99,
+                   label='Simulations with selected params')
+
+        best_idx = np.argmax(all_r)        
+        ax[i].plot(all_q[best_idx],
+                     color='white', lw=4, ls='-',
+                     zorder=98)
+        l1=ax[i].plot(all_q[best_idx],
+                     color='tab:green', lw=2, ls='-',
+                     label=r'Best simulation ($R^2$' +\
+                      f' = {all_r[best_idx]:.3f})',
+                     zorder=99)
         
     next_c='blue'
 
@@ -97,23 +111,33 @@ def plots(idata, data, title, with_trace=False,
     ax[i].plot(data_part, "", ls='-', lw=4, 
               color='white')
     '''
-    l2=ax[i].scatter(np.arange(switchpoint), 
-                     data_part[:switchpoint], 
+    if pred:
+        l2=ax[i].scatter(np.arange(switchpoint), 
+                         data_part[:switchpoint], 
+                      color='OrangeRed', s=20,
+                     edgecolors='white', zorder=100,
+                        label='Known data')
 
-                  color='green', s=30,
-                 edgecolors='white', zorder=100)
+        l3=ax[i].scatter(np.arange(switchpoint, 
+                                   data.shape[0]),
+                      data_part[switchpoint:], 
+                      color='gray', s=20,
+                   label='Unknown data',
+                     edgecolors='white',
+                        alpha=1, zorder=100)
+        ax[i].axvline(switchpoint, ls='--', color='gray',
+                      lw=2, label='Forecast starts')       
+        
+    else:
+        l3=ax[i].scatter(np.arange(switchpoint, 
+                                   data.shape[0]),
+                      data_part[switchpoint:], 
+                      color='OrangeRed', s=20,
+                   label='Observed incidence',
+                     edgecolors='white',
+                        alpha=1, zorder=100)
 
-    l3=ax[i].scatter(np.arange(switchpoint, 
-                               data.shape[0]),
-                  data_part[switchpoint:], 
-                  color='OrangeRed', s=20,
-               label='True incidence',
-                 edgecolors='white',
-                    alpha=1, zorder=100)
-
-    if switchpoint > 0:
-        ax[i].axvline(switchpoint, ls=':', color='gray',
-                 lw=3)        
+         
     #ax[i].set_title("Time series comparison")
     ax[i].set_xlabel('Time, days')
     ax[i].set_ylabel('Incidence, cases')
@@ -135,35 +159,41 @@ def plots(idata, data, title, with_trace=False,
     
     
 
-def calc_stat(idata, posterior, param_names):
-    rr = 2
-    ''''
-    p0_mode = stats.mode(posterior[param_names[0]
-                                  ].round(rr))[0]
-    p1_mode = stats.mode(posterior[param_names[1]
-                                  ].round(rr))[0]
-    
-    p0_mode = az.plots.plot_utils.calculate_point_estimate('mode',
-                   posterior[param_names[0]].values)
-    p1_mode = az.plots.plot_utils.calculate_point_estimate('mode',
-                   posterior[param_names[1]].values)
+def calc_stat(idata, param_names):
     '''
     p0_mode = az.hdi(idata.posterior[param_names[0]], 
                      hdi_prob=0.01)[param_names[0]].mean()
     p1_mode = az.hdi(idata.posterior[param_names[1]], 
                      hdi_prob=0.01)[param_names[1]].mean() 
-        
-    '''
-    p0_mode = posterior[param_names[0]
-                       ].quantile(.5).values
-    p1_mode = posterior[param_names[1]
-                       ].quantile(.5).values
+    '''    
+    gridsize = (128, 128)
+    density, xmin, xmax, ymin, ymax = _fast_kde_2d(idata.posterior[
+                                                        param_names[0]],
+                                                   idata.posterior[
+                                                        param_names[1]],
+                                                   gridsize=gridsize)
+    hdi_probs=[0.1]
+    # Calculate contour levels and sort for matplotlib
+    contour_levels = _find_hdi_contours(density, hdi_probs)
+    #contour_levels.sort()
+
+    contour_level_list = list(contour_levels) + [density.max()]
+    contour_kwargs = {'levels':contour_level_list}
     
-    p0_mode = posterior[param_names[0]
-                       ].mean().values
-    p1_mode = posterior[param_names[1]
-                       ].mean().values
-    '''
+    g_s = complex(gridsize[0])
+    x_x, y_y = np.mgrid[xmin:xmax:g_s, ymin:ymax:g_s]
+    fig, ax = plt.subplots(1,1)
+
+    cs = ax.contour(x_x, y_y, density, **contour_kwargs)
+    plt.close()
+    
+    n_different_areas = len(cs.allsegs[0])
+    
+    centroid = Polygon(np.array(cs.allsegs[0]).reshape(-1,2)
+                      ).centroid
+    p0_mode, p1_mode = centroid.x, centroid.y
+     
+
     return p0_mode, p1_mode
 
 
@@ -187,7 +217,8 @@ def results_calib(observed_data, idata,
     fancy_names = [r'$\beta_n$', r'$\alpha$']
     
     posterior = idata.posterior.stack(samples=("draw", "chain"))
-    p0_mode, p1_mode = calc_stat(idata, posterior, param_names)
+    p0_mode, p1_mode = calc_stat(idata, 
+                                 param_names)
     
     # ____ Accepted parameters ____
     ax_i = axes[0]
@@ -292,7 +323,7 @@ def pred_calib(observed_data, idata,
     fancy_names = [r'$\beta$', r'$\alpha$']
     
     posterior = idata.posterior.stack(samples=("draw", "chain"))
-    p0_mode, p1_mode = calc_stat(posterior, param_names)
+    p0_mode, p1_mode = calc_stat(idata, param_names)
     
     # ____ Accepted parameters ____
     ax_i = axes[0]
@@ -376,8 +407,11 @@ def pred_calib(observed_data, idata,
 
 def plot_calib(observed_data, idata, 
                true_tau, true_alpha, 
-               network_params):
-    
+               network_params, pred=False):
+    cmap = mpl.colormaps['viridis']
+    hdi_list = [0.1,0.2,0.5,0.8,0.9]
+    colors_l = cmap(np.linspace(0, 1, len(hdi_list)))
+
     # for edgecolor to have alpha
     fc=to_rgba('RoyalBlue', 0.5)
     param_names = ['tau','alpha']  
@@ -405,7 +439,7 @@ def plot_calib(observed_data, idata,
         var_names=["tau", "alpha"],
         kind=["scatter", "kde"],
         kde_kwargs={"fill_last": False, 
-                    'hdi_probs':[0.1,0.2,0.5,0.8,0.9],
+                    'hdi_probs':hdi_list,
                     'fill_kwargs':{'alpha': .1},
                     'contour_kwargs':{"colors":None},
                     'contourf_kwargs':{"alpha":0}},
@@ -436,24 +470,33 @@ def plot_calib(observed_data, idata,
                           fontsize=10)
 
 
-    p0_mode, p1_mode = calc_stat(idata, idata.posterior, 
+    p0_mode, p1_mode = calc_stat(idata,
                                  param_names)
 
     # i don't know if there can be multiple ref points, so it's easier    
-    ax_scatter.scatter(true_tau, true_alpha, alpha=0.9, 
+    ls1 = ax_scatter.scatter(true_tau, true_alpha, alpha=0.9, 
                         color='OrangeRed', label='Observed', 
                      edgecolors='white',
                      s=50, zorder=99)
 
-    ax_scatter.scatter(p0_mode, p1_mode, alpha=0.9, 
-                        color='tab:green', label='Chosen', 
+    ls2 = ax_scatter.scatter(p0_mode, p1_mode, alpha=0.9, 
+                        color='tab:green', label='Selected', 
                      edgecolors='white',
                      s=50, zorder=99) 
 
     ax_scatter.set_xlabel(fancy_names[0], fontsize=12)
     ax_scatter.set_ylabel(fancy_names[1], fontsize=12)
+    
+    
+    legend_elements= []
+    for c, val in zip(colors_l[::-1], hdi_list):
+        legend_elements.append(mpatches.Patch(color=c,
+                                              label=f'HDR {int(val*100)}%',
+                                             alpha=.9)
+                              )
 
-    ax_scatter.legend()
+    ax_scatter.legend(handles=[ls1,ls2,
+                               *legend_elements])
     ax_scatter.grid()
 
     ax_up.axvline(p0_mode, ls='-', color='white', lw=3)
@@ -468,6 +511,7 @@ def plot_calib(observed_data, idata,
 
     plots(idata, observed_data, '',  
           ax=ax_curves, p0_mode=p0_mode,p1_mode=p1_mode,
-          network_params=network_params)
+          network_params=network_params,
+         pred=pred)
 
     plt.tight_layout()
