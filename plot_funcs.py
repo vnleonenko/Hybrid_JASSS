@@ -138,15 +138,32 @@ def plots(idata, data, title, with_trace=False,
                      edgecolors='white',
                         alpha=1, zorder=1000)
 
-         
+    flabel = 14
     #ax[i].set_title("Time series comparison")
-    ax[i].set_xlabel('Time, days')
-    ax[i].set_ylabel('Incidence, cases')
-
+    ax[i].set_xlabel('Time, days', fontsize=flabel)
+    ax[i].set_ylabel('Incidence, cases', fontsize=flabel)
+    
+    ax[i].set_xticks(np.arange(0,100,20), 
+                     np.arange(0,100,20),
+                     fontsize=flabel)
+    ax[i].set_yticks(np.arange(0,
+                               int(data['incidence'].max()*1.2),
+                               1000), 
+                     np.arange(0,
+                               int(data['incidence'].max()*1.2),
+                               1000),
+                     fontsize=flabel)
+    
+    ax[i].set_ylim(0, data['incidence'].max()*1.2)
     #ax[i].set_xlim(-5, data.shape[0])#np.where(data==0)[0][0]*1.1)
     ax[i].grid()
     #ax[i].set_title(title)
-    ax[i].legend(fontsize=10);
+    if pred:
+        flabel_p = 12
+    else:
+        flabel_p = 10
+        
+    ax[i].legend(fontsize=flabel_p);
     
     #return all_q, all_r
 
@@ -413,7 +430,8 @@ def plot_calib(observed_data, idata,
     cmap = mpl.colormaps['viridis']
     hdi_list = [0.2,0.5,0.8,0.9]
     colors_l = cmap(np.linspace(0, 1, len(hdi_list)))
-
+    flabel = 14
+    
     # for edgecolor to have alpha
     fc=to_rgba('RoyalBlue', 0.5)
     param_names = ['tau','alpha']  
@@ -474,11 +492,11 @@ def plot_calib(observed_data, idata,
     
     ax_scatter.set_xticks(np.arange(min_x,1,0.2), 
                           np.arange(min_x,1,0.2).round(1),
-                          #fontsize=10
+                          fontsize=flabel
                          )
     ax_scatter.set_yticks(np.arange(min_y,1,0.1),
                          np.arange(min_y,1,0.1).round(1),
-                          #fontsize=10
+                          fontsize=flabel
                          )
 
 
@@ -498,8 +516,8 @@ def plot_calib(observed_data, idata,
     ls3 = ax_scatter.scatter(true_tau, true_alpha, zorder=0, s=5,
                color=fc, label='Simulation')
     
-    ax_scatter.set_xlabel(fancy_names[0])#, fontsize=12)
-    ax_scatter.set_ylabel(fancy_names[1])#, fontsize=12)
+    ax_scatter.set_xlabel(fancy_names[0], fontsize=flabel)
+    ax_scatter.set_ylabel(fancy_names[1], fontsize=flabel)
     
     
     legend_elements= []
@@ -508,10 +526,14 @@ def plot_calib(observed_data, idata,
                                               label=f'HDR {int(val*100)}%',
                                              alpha=.9)
                               )
-
+    
+    if pred:
+        flabel_p = 12
+    else:
+        flabel_p = 10
     ax_scatter.legend(handles=[ls1,ls2,ls3,
                                *legend_elements],
-                     fontsize=10)
+                     fontsize=flabel_p)
     ax_scatter.grid()
     '''
     ax_scatter.plot([p0_mode,p0_mode], [p1_mode,1],
