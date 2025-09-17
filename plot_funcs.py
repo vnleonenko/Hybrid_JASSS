@@ -16,7 +16,7 @@ import scipy.stats as stats
 import calibr_funcs
 from arviz.stats.density_utils import _fast_kde_2d, \
                                       _find_hdi_contours
-from shapely.geometry import Polygon
+from shapely.geometry import Polygon, MultiPolygon 
 
 
 # _____________________ FOR CALIBRATION    
@@ -97,12 +97,12 @@ def plots(idata, data, title, with_trace=False,
         best_idx = np.argmax(all_r)        
         ax[i].plot(all_q[best_idx],
                      color='white', lw=4, ls='-',
-                     zorder=98)
+                     zorder=980)
         l1=ax[i].plot(all_q[best_idx],
                      color='tab:green', lw=2, ls='-',
                      label=r'Best simulation ($R^2$' +\
                       f' = {all_r[best_idx]:.3f})',
-                     zorder=99)
+                     zorder=990)
         
     next_c='blue'
 
@@ -115,7 +115,7 @@ def plots(idata, data, title, with_trace=False,
         l2=ax[i].scatter(np.arange(switchpoint), 
                          data_part[:switchpoint], 
                       color='tab:green', s=20,
-                     edgecolors='white', zorder=100,
+                     edgecolors='white', zorder=1000,
                         label='Known data')
 
         l3=ax[i].scatter(np.arange(switchpoint, 
@@ -124,7 +124,7 @@ def plots(idata, data, title, with_trace=False,
                       color='gray', s=20,
                    label='Unknown data',
                      edgecolors='white',
-                        alpha=1, zorder=100)
+                        alpha=1, zorder=1000)
         ax[i].axvline(switchpoint, ls='--', color='gray',
                       lw=2#, label='Forecast starts'
                      )       
@@ -136,7 +136,7 @@ def plots(idata, data, title, with_trace=False,
                       color='OrangeRed', s=20,
                    label='Observed incidence',
                      edgecolors='white',
-                        alpha=1, zorder=100)
+                        alpha=1, zorder=1000)
 
          
     #ax[i].set_title("Time series comparison")
@@ -146,7 +146,7 @@ def plots(idata, data, title, with_trace=False,
     #ax[i].set_xlim(-5, data.shape[0])#np.where(data==0)[0][0]*1.1)
     ax[i].grid()
     #ax[i].set_title(title)
-    ax[i].legend();
+    ax[i].legend(fontsize=10);
     
     #return all_q, all_r
 
@@ -190,8 +190,8 @@ def calc_stat(idata, param_names):
     
     n_different_areas = len(cs.allsegs[0])
     
-    centroid = Polygon(np.array(cs.allsegs[0]).reshape(-1,2)
-                      ).centroid
+    pols = [Polygon(cs.allsegs[0][i]) for i in range(n_different_areas)]
+    centroid = MultiPolygon(pols).centroid
     p0_mode, p1_mode = centroid.x, centroid.y
      
 
@@ -408,7 +408,8 @@ def pred_calib(observed_data, idata,
 
 def plot_calib(observed_data, idata, 
                true_tau, true_alpha, 
-               network_params, pred=False):
+               network_params, pred=False,
+              ax_curves=[], ax_kde=[]):
     cmap = mpl.colormaps['viridis']
     hdi_list = [0.2,0.5,0.8,0.9]
     colors_l = cmap(np.linspace(0, 1, len(hdi_list)))
@@ -417,23 +418,27 @@ def plot_calib(observed_data, idata,
     fc=to_rgba('RoyalBlue', 0.5)
     param_names = ['tau','alpha']  
     fancy_names = [r'$\beta_n$', r'$\alpha$']
+    
+    if not ax_curves:
+        fig = plt.figure(figsize=(12,5))
+        # adding gridspec
+        gs = fig.add_gridspec(1, 2, hspace=0.6, width_ratios=[1,1.25])
+        # dividing it even further!
+        gs0 = gs[0].subgridspec(2, 1, height_ratios=[1, 4], hspace=0.)
+        gs1 = gs[1].subgridspec(2, 2, wspace=0, hspace=0.,
+                                width_ratios=[5, 1],
+                                height_ratios=[1, 4])
 
-    fig = plt.figure(figsize=(10,5))
-    # adding gridspec
-    gs = fig.add_gridspec(1, 2, hspace=0.6, width_ratios=[1,1.25])
-    # dividing it even further!
-    gs0 = gs[0].subgridspec(2, 1, height_ratios=[1, 4], hspace=0.)
-    gs1 = gs[1].subgridspec(2, 2, wspace=0, hspace=0.,
-                            width_ratios=[5, 1],
-                            height_ratios=[1, 4])
+        # creating subplots, ignoring useless corners
+        ax_curves = fig.add_subplot(gs0[1])
 
-    # creating subplots, ignoring useless corners
-    ax_curves = fig.add_subplot(gs0[1])
-
-    ax_up = fig.add_subplot(gs1[0])
-    ax_scatter = fig.add_subplot(gs1[2], sharex=ax_up)
-    ax_right = fig.add_subplot(gs1[3], sharey=ax_scatter)
-
+        ax_up = fig.add_subplot(gs1[0])
+        ax_scatter = fig.add_subplot(gs1[2], sharex=ax_up)
+        ax_right = fig.add_subplot(gs1[3], sharey=ax_scatter)
+    else:
+        ax_curves = ax_curves[0]
+        ax_up,ax_scatter,ax_right = ax_kde
+        
     # plotting UFO
     q = az.plot_pair(
         idata,
@@ -469,10 +474,12 @@ def plot_calib(observed_data, idata,
     
     ax_scatter.set_xticks(np.arange(min_x,1,0.2), 
                           np.arange(min_x,1,0.2).round(1),
-                          fontsize=10)
+                          #fontsize=10
+                         )
     ax_scatter.set_yticks(np.arange(min_y,1,0.1),
                          np.arange(min_y,1,0.1).round(1),
-                          fontsize=10)
+                          #fontsize=10
+                         )
 
 
     p0_mode, p1_mode = calc_stat(idata,
@@ -491,8 +498,8 @@ def plot_calib(observed_data, idata,
     ls3 = ax_scatter.scatter(true_tau, true_alpha, zorder=0, s=5,
                color=fc, label='Simulation')
     
-    ax_scatter.set_xlabel(fancy_names[0], fontsize=12)
-    ax_scatter.set_ylabel(fancy_names[1], fontsize=12)
+    ax_scatter.set_xlabel(fancy_names[0])#, fontsize=12)
+    ax_scatter.set_ylabel(fancy_names[1])#, fontsize=12)
     
     
     legend_elements= []
@@ -503,9 +510,15 @@ def plot_calib(observed_data, idata,
                               )
 
     ax_scatter.legend(handles=[ls1,ls2,ls3,
-                               *legend_elements])
+                               *legend_elements],
+                     fontsize=10)
     ax_scatter.grid()
-
+    '''
+    ax_scatter.plot([p0_mode,p0_mode], [p1_mode,1],
+                    color='tab:green')
+    ax_scatter.plot([p0_mode,1], [p1_mode,p1_mode],
+                   color='tab:green')
+    '''
     ax_up.axvline(p0_mode, ls='-', color='white', lw=3)
     ax_up.axvline(p0_mode, ls='--', color='tab:green')
     ax_up.axvline(true_tau, ls='-', color='white', lw=3)
@@ -516,6 +529,9 @@ def plot_calib(observed_data, idata,
     ax_right.axhline(true_alpha, ls='-', color='white', lw=3)
     ax_right.axhline(true_alpha, ls='--', color='OrangeRed')
 
+    #ax_scatter.set_ylim(min_y*.9,1)
+    #ax_scatter.set_xlim(min_x*.9,1)
+    
     plots(idata, observed_data, '',  
           ax=ax_curves, p0_mode=p0_mode,p1_mode=p1_mode,
           network_params=network_params,
