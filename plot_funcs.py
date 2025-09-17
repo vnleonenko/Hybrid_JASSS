@@ -72,7 +72,7 @@ def plots(idata, data, title, with_trace=False,
     all_r = []
     all_q = []    
     if not pred:
-        for j in range(2):
+        for j in range(1):
         #num_runs=1
             q = calibr_funcs.simulation_func(1, tau=[p0_mode], 
                                     alpha=[p1_mode], 
@@ -451,6 +451,7 @@ def plot_calib(observed_data, idata,
                                                       'color':fc,
                                                      #'alpha':.5,
                                                      'ec':fc}},
+        scatter_kwargs={'color':fc},
         ax=np.array([[ax_up,None],[ax_scatter,ax_right]])
     )
 
@@ -483,7 +484,9 @@ def plot_calib(observed_data, idata,
                         color='tab:green', label='Selected', 
                      edgecolors='white',
                      s=50, zorder=99) 
-
+    ls3 = ax_scatter.scatter(true_tau, true_alpha, zorder=0, s=5,
+               color=fc, label='Simulation')
+    
     ax_scatter.set_xlabel(fancy_names[0], fontsize=12)
     ax_scatter.set_ylabel(fancy_names[1], fontsize=12)
     
@@ -495,7 +498,7 @@ def plot_calib(observed_data, idata,
                                              alpha=.9)
                               )
 
-    ax_scatter.legend(handles=[ls1,ls2,
+    ax_scatter.legend(handles=[ls1,ls2,ls3,
                                *legend_elements])
     ax_scatter.grid()
 
