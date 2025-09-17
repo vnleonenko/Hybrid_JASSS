@@ -114,7 +114,7 @@ def plots(idata, data, title, with_trace=False,
     if pred:
         l2=ax[i].scatter(np.arange(switchpoint), 
                          data_part[:switchpoint], 
-                      color='OrangeRed', s=20,
+                      color='tab:green', s=20,
                      edgecolors='white', zorder=100,
                         label='Known data')
 
@@ -126,7 +126,8 @@ def plots(idata, data, title, with_trace=False,
                      edgecolors='white',
                         alpha=1, zorder=100)
         ax[i].axvline(switchpoint, ls='--', color='gray',
-                      lw=2, label='Forecast starts')       
+                      lw=2#, label='Forecast starts'
+                     )       
         
     else:
         l3=ax[i].scatter(np.arange(switchpoint, 
@@ -172,7 +173,7 @@ def calc_stat(idata, param_names):
                                                    idata.posterior[
                                                         param_names[1]],
                                                    gridsize=gridsize)
-    hdi_probs=[0.1]
+    hdi_probs=[0.2]
     # Calculate contour levels and sort for matplotlib
     contour_levels = _find_hdi_contours(density, hdi_probs)
     #contour_levels.sort()
@@ -409,7 +410,7 @@ def plot_calib(observed_data, idata,
                true_tau, true_alpha, 
                network_params, pred=False):
     cmap = mpl.colormaps['viridis']
-    hdi_list = [0.1,0.2,0.5,0.8,0.9]
+    hdi_list = [0.2,0.5,0.8,0.9]
     colors_l = cmap(np.linspace(0, 1, len(hdi_list)))
 
     # for edgecolor to have alpha
@@ -434,7 +435,7 @@ def plot_calib(observed_data, idata,
     ax_right = fig.add_subplot(gs1[3], sharey=ax_scatter)
 
     # plotting UFO
-    az.plot_pair(
+    q = az.plot_pair(
         idata,
         var_names=["tau", "alpha"],
         kind=["scatter", "kde"],
@@ -442,7 +443,10 @@ def plot_calib(observed_data, idata,
                     'hdi_probs':hdi_list,
                     'fill_kwargs':{'alpha': .1},
                     'contour_kwargs':{"colors":None},
-                    'contourf_kwargs':{"alpha":0}},
+                    'contourf_kwargs':{"alpha":0.3, 
+                                       'colors':[colors_l[-1],
+                                                 *colors_l[:-1]]
+                                      }},
         marginals=True,
         #point_estimate="mode",
         #reference_values={'tau':true_tau, 'alpha': true_alpha},
@@ -454,7 +458,7 @@ def plot_calib(observed_data, idata,
         scatter_kwargs={'color':fc},
         ax=np.array([[ax_up,None],[ax_scatter,ax_right]])
     )
-
+    print()
     # removing ticks from small plots
     for a in [ax_up, ax_right]:
         plt.setp(a.get_xticklabels(), visible=False)
