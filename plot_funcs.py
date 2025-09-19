@@ -481,14 +481,14 @@ def plot_calib(observed_data, idata,
         scatter_kwargs={'color':fc},
         ax=np.array([[ax_up,None],[ax_scatter,ax_right]])
     )
-    print()
+
     # removing ticks from small plots
     for a in [ax_up, ax_right]:
         plt.setp(a.get_xticklabels(), visible=False)
         plt.setp(a.get_yticklabels(), visible=False)
     # setting normal ticks for a scatterplot
-    min_x = idata.posterior[param_names[0]].min().round(1)
-    min_y = idata.posterior[param_names[1]].min().round(1)
+    min_x = 0.05 #idata.posterior[param_names[0]].min().round(1)
+    min_y = 0. #idata.posterior[param_names[1]].min().round(1)
     
     ax_scatter.set_xticks(np.arange(min_x,1,0.2), 
                           np.arange(min_x,1,0.2).round(1),
@@ -498,7 +498,9 @@ def plot_calib(observed_data, idata,
                          np.arange(min_y,1,0.1).round(1),
                           fontsize=flabel
                          )
-
+    
+    ax_scatter.set_xlim(min_x,1)
+    ax_scatter.set_ylim(min_y,1)
 
     p0_mode, p1_mode = calc_stat(idata,
                                  param_names)
