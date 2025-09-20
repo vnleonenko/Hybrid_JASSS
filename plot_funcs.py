@@ -33,9 +33,13 @@ def plots(idata, data, title, with_trace=False,
         sim_value = idata.posterior_predictive.sim
         switchpoint=0
         fin_size = data.shape[0]
-        
+    
+    
+    
     posterior = idata.posterior.stack(samples=("draw", "chain"))
     print(p0_mode,p1_mode)
+    timespace = np.arange(len(data))
+    
     
     with_switch,num_runs,frac,gamma,delta,n_nodes = network_params
     data_part = data
@@ -53,8 +57,10 @@ def plots(idata, data, title, with_trace=False,
     sim_part = sim_value.stack(samples=("draw", "chain"))
    
     # posterior predictive lines
+    '''
     l0 = ax[i].plot(sim_part[:switchpoint], 
                     color='gray', alpha=0.05) 
+    '''
     l00 = ax[i].plot(np.arange(switchpoint, 
                                fin_size),
                      sim_part[switchpoint:fin_size], 
@@ -72,7 +78,7 @@ def plots(idata, data, title, with_trace=False,
     all_r = []
     all_q = []    
     if not pred:
-        for j in range(1):
+        for j in range(50):
         #num_runs=1
             q = calibr_funcs.simulation_func(1, tau=[p0_mode], 
                                     alpha=[p1_mode], 
@@ -92,14 +98,15 @@ def plots(idata, data, title, with_trace=False,
                    y1 = np.array(all_q).min(axis=0),
                    y2 = np.array(all_q).max(axis=0),
                    color='tab:green', alpha=.5, zorder=99,
-                   label='Simulations with selected params')
+                   #label='Simulations with selected params'
+                          )
 
         best_idx = np.argmax(all_r)        
         ax[i].plot(all_q[best_idx],
                      color='white', lw=4, ls='-',
                      zorder=980)
         l1=ax[i].plot(all_q[best_idx],
-                     color='tab:green', lw=2, ls='-',
+                     color='ForestGreen', lw=2, ls='-',
                      label=r'Best simulation ($R^2$' +\
                       f' = {all_r[best_idx]:.3f})',
                      zorder=990)
@@ -114,35 +121,43 @@ def plots(idata, data, title, with_trace=False,
     if pred:
         l2=ax[i].scatter(np.arange(switchpoint), 
                          data_part[:switchpoint], 
-                      color='tab:green', s=20,
-                     edgecolors='white', zorder=1000,
+                      color='LimeGreen', 
+                         edgecolors='k',
+                         s=50, zorder=1000,
                         label='Known data')
 
         l3=ax[i].scatter(np.arange(switchpoint, 
                                    data.shape[0]),
                       data_part[switchpoint:], 
-                      color='gray', s=20,
+                      color='Grey', s=50,
                    label='Unknown data',
-                     edgecolors='white',
-                        alpha=1, zorder=1000)
-        ax[i].axvline(switchpoint, ls='--', color='gray',
-                      lw=2#, label='Forecast starts'
+                     edgecolors='k',
+                        alpha=.5, zorder=1000)
+        
+       
+        ax[i].axvline(switchpoint, ls='--', color='k',
+                      lw=1#, label='Forecast starts'
                      )       
         
+    
     else:
         l3=ax[i].scatter(np.arange(switchpoint, 
                                    data.shape[0]),
                       data_part[switchpoint:], 
-                      color='OrangeRed', s=20,
-                   label='Observed incidence',
-                     edgecolors='white',
+                      color='white', s=20,
                         alpha=1, zorder=1000)
-
-    flabel = 14
+        l3=ax[i].scatter(np.arange(switchpoint, 
+                                   data.shape[0]),
+                      data_part[switchpoint:], 
+                      color='OrangeRed', s=10,
+                   label='Observed incidence',
+                     
+                        alpha=1, zorder=1000)
+    fontsize = 14
     #ax[i].set_title("Time series comparison")
-    ax[i].set_xlabel('Time, days', fontsize=flabel)
-    ax[i].set_ylabel('Incidence, cases', fontsize=flabel)
-    
+    ax[i].set_xlabel('Time, days', fontsize=1.2*fontsize)
+    ax[i].set_ylabel('Incidence, cases', fontsize=1.2*fontsize)
+    '''
     ax[i].set_xticks(np.arange(0,100,20), 
                      np.arange(0,100,20),
                      fontsize=flabel)
@@ -156,14 +171,21 @@ def plots(idata, data, title, with_trace=False,
     
     ax[i].set_ylim(0, data['incidence'].max()*1.2)
     #ax[i].set_xlim(-5, data.shape[0])#np.where(data==0)[0][0]*1.1)
+    '''
+    
+    ax[i].tick_params(axis='both', which='major', labelsize=fontsize)
+    if pred:
+        ymax = 3300
+        ax[i].set_ylim(0, ymax)
+    
     ax[i].grid()
     #ax[i].set_title(title)
     if pred:
-        flabel_p = 12
+        flabel_p = fontsize
     else:
         flabel_p = 10
         
-    ax[i].legend(fontsize=flabel_p);
+    ax[i].legend(fontsize=flabel_p).set_zorder(9999);
     
     #return all_q, all_r
 
@@ -430,7 +452,7 @@ def plot_calib(observed_data, idata,
     cmap = mpl.colormaps['viridis']
     hdi_list = [0.2,0.5,0.8,0.9]
     colors_l = cmap(np.linspace(0, 1, len(hdi_list)))
-    flabel = 14
+    fontsize = 14
     
     # for edgecolor to have alpha
     fc=to_rgba('RoyalBlue', 0.5)
@@ -481,26 +503,24 @@ def plot_calib(observed_data, idata,
         scatter_kwargs={'color':fc},
         ax=np.array([[ax_up,None],[ax_scatter,ax_right]])
     )
-
+    print()
     # removing ticks from small plots
     for a in [ax_up, ax_right]:
         plt.setp(a.get_xticklabels(), visible=False)
         plt.setp(a.get_yticklabels(), visible=False)
     # setting normal ticks for a scatterplot
-    min_x = 0.05 #idata.posterior[param_names[0]].min().round(1)
-    min_y = 0. #idata.posterior[param_names[1]].min().round(1)
+    min_x = idata.posterior[param_names[0]].min().round(1)
+    min_y = idata.posterior[param_names[1]].min().round(1)
     
     ax_scatter.set_xticks(np.arange(min_x,1,0.2), 
                           np.arange(min_x,1,0.2).round(1),
-                          fontsize=flabel
+                          #fontsize=flabel
                          )
     ax_scatter.set_yticks(np.arange(min_y,1,0.1),
                          np.arange(min_y,1,0.1).round(1),
-                          fontsize=flabel
+                          #fontsize=flabel
                          )
-    
-    ax_scatter.set_xlim(min_x,1)
-    ax_scatter.set_ylim(min_y,1)
+
 
     p0_mode, p1_mode = calc_stat(idata,
                                  param_names)
@@ -518,9 +538,20 @@ def plot_calib(observed_data, idata,
     ls3 = ax_scatter.scatter(true_tau, true_alpha, zorder=0, s=5,
                color=fc, label='Simulation')
     
-    ax_scatter.set_xlabel(fancy_names[0], fontsize=flabel)
-    ax_scatter.set_ylabel(fancy_names[1], fontsize=flabel)
-    
+    ax_scatter.set_xlabel(fancy_names[0], #fontsize=flabel
+                         )
+    ax_scatter.set_ylabel(fancy_names[1], #fontsize=flabel
+                         )
+                          
+    ax_scatter.set_xlim(0, 1)
+    ax_scatter.set_ylim(0.5, 1)
+    ticks_x = [0.1, 0.3, 0.5, 0.7, 0.9]
+    ticks_y = [0.5, 0.6, 0.7, 0.8, 0.9]
+    ax_scatter.set_xticks(ticks_x, list(map(str, ticks_x)))
+    ax_scatter.set_yticks(ticks_y, list(map(str, ticks_y)))
+    ax_scatter.tick_params(axis='both', which='major', labelsize=fontsize)
+    ax_scatter.set_xlabel(fancy_names[0], fontsize=1.2*fontsize)
+    ax_scatter.set_ylabel(fancy_names[1], fontsize=1.2*fontsize)
     
     legend_elements= []
     for c, val in zip(colors_l[::-1], hdi_list):
@@ -535,7 +566,7 @@ def plot_calib(observed_data, idata,
         flabel_p = 10
     ax_scatter.legend(handles=[ls1,ls2,ls3,
                                *legend_elements],
-                     fontsize=flabel_p)
+                     fontsize=10)
     ax_scatter.grid()
     '''
     ax_scatter.plot([p0_mode,p0_mode], [p1_mode,1],
