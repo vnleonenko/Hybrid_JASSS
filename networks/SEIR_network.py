@@ -3,14 +3,14 @@ import scipy
 import numpy as np
 import networkx as nx
 import EoN
-
+import random
 from collections import defaultdict
 from .model_output import SEIRModelOutput, SEIRParams
 
 
 class SEIRNetworkModel():
     def __init__(self, population: int, ntype: str,
-                chosen_seed):
+                chosen_seed, G=0):
         self.population = population
 
         # FOLLOWING PARAMETERS ARE EPIDEMICALLY DETERMINED
@@ -32,6 +32,8 @@ class SEIRNetworkModel():
         elif ntype=='r':
             # чтобы средняя степень была 8
             self.G = nx.fast_gnp_random_graph(population, 5/population, seed=chosen_seed)
+        elif ntype=='custom':
+            self.G = G
             #print('r')
         
         
@@ -79,7 +81,7 @@ class SEIRNetworkModel():
     
     def simulate(self, beta=1/7*1.5, gamma=1/2, delta=1/7, 
                  init_inf_frac=1e-4, init_rec_frac=0.15, 
-                 tmax: int = 150, I_frac_switch=1, frac_pop='Infected'):
+                 tmax: int = 150, I_frac_switch=1, frac_pop='Infected', network_type='ba'):
         '''
         Parameters:
 
@@ -96,14 +98,28 @@ class SEIRNetworkModel():
         J.add_edge(('I', 'S'), ('I', 'E'), rate=beta)
         initial_infected = int(init_inf_frac*self.population)
         initial_status = defaultdict(lambda: 'S')
-        for node in range(initial_infected):
-            initial_status[node] = 'I'
+        
         initial_recovered = int(init_rec_frac*self.population)
         assert initial_recovered + initial_infected < self.population, \
             "Incorrect initial conditions, immune + infected > population size!"
-        for node in range(initial_recovered):
-            initial_status[node+initial_infected] = 'R'
-            
+        
+        # по умолчанию у синт.графа ноды как строки! а у обычной топологии -- числа
+        if network_type=='custom':
+            N = len(self.G.nodes)
+            all_nodes = [i for i in range(N)]
+            random.seed(42)
+            random.shuffle(all_nodes)
+
+            for node in range(initial_infected):
+                initial_status[str(all_nodes.pop())] = 'I'
+            for node in range(initial_recovered):
+                initial_status[str(all_nodes.pop())] = 'R'
+        else:
+            for node in range(initial_infected):
+                initial_status[node] = 'I'
+            for node in range(initial_recovered):
+                initial_status[node+initial_infected] = 'R'
+        
         seir_o = SEIRModelOutput(*EoN.Gillespie_simple_contagion(
                                         self.G, H, J, initial_status,
                                         return_statuses=('S', 'E', 
