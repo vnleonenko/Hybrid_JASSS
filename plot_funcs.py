@@ -17,7 +17,7 @@ import calibr_funcs
 from arviz.stats.density_utils import _fast_kde_2d, \
                                       _find_hdi_contours
 from shapely.geometry import Polygon, MultiPolygon 
-
+from source.autoencoder import AESurrogateModel
 
 # _____________________ FOR CALIBRATION    
 
@@ -25,10 +25,13 @@ def plots(idata, data, title, with_trace=False,
           show_values=True, return_r2=False, 
           ax=None, p0_mode=0,p1_mode=0,network_params=[], pred=False):
     param_names = ['tau','alpha']   
+    with_switch,num_runs,frac,gamma,delta,n_nodes = network_params
+    
     if pred:
         sim_value = idata.predictions.sim
         switchpoint = idata.constant_data.incidence.shape[0]
         fin_size = switchpoint+7
+    
     else:
         sim_value = idata.posterior_predictive.sim
         switchpoint=0
@@ -41,7 +44,6 @@ def plots(idata, data, title, with_trace=False,
     timespace = np.arange(len(data))
     
     
-    with_switch,num_runs,frac,gamma,delta,n_nodes = network_params
     data_part = data
     model_time = [data.shape[0]]
     alpha_len = 1
@@ -77,14 +79,15 @@ def plots(idata, data, title, with_trace=False,
     
     all_r = []
     all_q = []    
-    if not pred:
+    print(num_runs)
+    if (not pred) and (num_runs[0]>0):
         for j in range(50):
         #num_runs=1
             q = calibr_funcs.simulation_func(1, tau=[p0_mode], 
                                     alpha=[p1_mode], 
                                     modeling_duration=[data.shape[0]], 
 
-                                    with_switch=with_switch,
+                                     with_switch=with_switch,
                                     num_runs=num_runs, 
                                     frac=frac, 
                                     size=[data.shape[0]])
@@ -111,6 +114,19 @@ def plots(idata, data, title, with_trace=False,
                       f' = {all_r[best_idx]:.3f})',
                      zorder=990)
         
+    elif num_runs[0]==0:
+        model = AESurrogateModel(10**5)
+        q = model.simulate(p1_mode,p0_mode)[:data.shape[0]]
+        r2_part = r2_score(data_part, q)
+            
+        ax[i].plot(q,
+                     color='white', lw=4, ls='-',
+                     zorder=980)
+        l1=ax[i].plot(q,
+                     color='ForestGreen', lw=2, ls='-',
+                     label=r'Best simulation ($R^2$' +\
+                      f' = {r2_part:.3f})',
+                     zorder=990)
     next_c='blue'
 
     # real data

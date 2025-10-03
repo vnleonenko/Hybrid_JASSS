@@ -15,7 +15,7 @@ from networks.SEIR_network import SEIRNetworkModel
 from hybrid_network_to_seir import NetworkSEIR_tuned,\
                                     generate_synthetic_data
 import seir_discrete
-#import predict_Beta_I
+import predict_Beta_I
 #pip install -e git+https://github.com/Mpkosh/Mathematics-of-Epidemics-on-Networks.git@my_changes#egg=eon
 
 
@@ -91,10 +91,10 @@ def simulation_func(rng, tau, alpha, modeling_duration,
     num_runs = np.array(num_runs).flatten()[0] 
     frac = np.array(frac).flatten()[0] 
     
-    method='last'
+    method='lstm'
     network_type='ba'    
-    gamma = 1/5
-    delta = 1/10
+    gamma = 0.3
+    delta = 0.2
     n_nodes=100000
     
     chosen_seed = np.random.RandomState(42)
