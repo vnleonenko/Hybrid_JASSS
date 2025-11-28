@@ -3,8 +3,12 @@ import torch.nn as nn
 
 
 class AESurrogateModel():
-    def __init__(self, population: int):
-        self.model = torch.load('models/autoencoder_barabasi_100k.pt',
+    def __init__(self, population: int, topology='ba'):
+        if topology == 'ba':
+            filen = 'autoencoder_barabasi_100k_n'
+        else:
+            filen = 'autoencoder_sw_100k_n'
+        self.model = torch.load(f'models/{filen}.pt',
                                 weights_only=False)
         self.model.eval()
 

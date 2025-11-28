@@ -17,7 +17,8 @@ import calibr_funcs
 from arviz.stats.density_utils import _fast_kde_2d, \
                                       _find_hdi_contours
 from shapely.geometry import Polygon, MultiPolygon 
-from source.autoencoder import AESurrogateModel
+
+
 
 # _____________________ FOR CALIBRATION    
 
@@ -80,35 +81,46 @@ def plots(idata, data, title, with_trace=False,
     all_r = []
     all_q = []    
     print(num_runs)
-    if (not pred) and (num_runs[0]>0):
+    if (num_runs[0]>0):
+        if pred:
+            data_appr = data.iloc[:fin_size]
+        else:
+            data_appr = data
         for j in range(50):
+            
         #num_runs=1
             q = calibr_funcs.simulation_func(1, tau=[p0_mode], 
                                     alpha=[p1_mode], 
-                                    modeling_duration=[data.shape[0]], 
+                                    modeling_duration=[data_appr.shape[0]], 
 
                                      with_switch=with_switch,
                                     num_runs=num_runs, 
                                     frac=frac, 
-                                    size=[data.shape[0]])
+                                    size=[data_appr.shape[0]])
+            
             all_q.append(q)
-            r2_part = r2_score(data_part, q)
+            r2_part = r2_score(data_appr, q)
             all_r.append(r2_part)
             
             #l1=ax[i].plot(q,color='tab:green', lw=2, ls='-')
-    
-        ax[i].fill_between(x=np.arange(data.shape[0]),
-                   y1 = np.array(all_q).min(axis=0),
-                   y2 = np.array(all_q).max(axis=0),
+        
+        ax[i].fill_between(x=np.arange(switchpoint,
+                                       fin_size),
+                   y1 = np.array(all_q).min(axis=0)[switchpoint:],
+                   y2 = np.array(all_q).max(axis=0)[switchpoint:],
                    color='tab:green', alpha=.5, zorder=99,
                    #label='Simulations with selected params'
                           )
 
         best_idx = np.argmax(all_r)        
-        ax[i].plot(all_q[best_idx],
+        ax[i].plot(np.arange(switchpoint,
+                                       fin_size),
+                   all_q[best_idx][switchpoint:],
                      color='white', lw=4, ls='-',
                      zorder=980)
-        l1=ax[i].plot(all_q[best_idx],
+        l1=ax[i].plot(np.arange(switchpoint,
+                                       fin_size),
+                      all_q[best_idx][switchpoint:],
                      color='ForestGreen', lw=2, ls='-',
                      label=r'Best simulation ($R^2$' +\
                       f' = {all_r[best_idx]:.3f})',
@@ -136,15 +148,16 @@ def plots(idata, data, title, with_trace=False,
     '''
     if pred:
         l2=ax[i].scatter(np.arange(switchpoint), 
-                         data_part[:switchpoint], 
+                         data[:switchpoint], 
                       color='LimeGreen', 
                          edgecolors='k',
                          s=50, zorder=1000,
-                        label='Known data')
+                        label='Known data',
+                        )
 
         l3=ax[i].scatter(np.arange(switchpoint, 
                                    data.shape[0]),
-                      data_part[switchpoint:], 
+                      data[switchpoint:], 
                       color='Grey', s=50,
                    label='Unknown data',
                      edgecolors='k',
@@ -197,7 +210,7 @@ def plots(idata, data, title, with_trace=False,
     ax[i].grid()
     #ax[i].set_title(title)
     if pred:
-        flabel_p = fontsize
+        flabel_p = 10
     else:
         flabel_p = 10
         
@@ -602,6 +615,8 @@ def plot_calib(observed_data, idata,
 
     #ax_scatter.set_ylim(min_y*.9,1)
     #ax_scatter.set_xlim(min_x*.9,1)
+    
+    #ax_up.legend()
     
     plots(idata, observed_data, '',  
           ax=ax_curves, p0_mode=p0_mode,p1_mode=p1_mode,
