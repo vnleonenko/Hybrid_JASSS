@@ -12,12 +12,13 @@ from timeit import default_timer as timer
 import pymc as pm
 import arviz as az
 import seaborn as sns 
+import pandas as pd
 import scipy.stats as stats
 import calibr_funcs
 from arviz.stats.density_utils import _fast_kde_2d, \
                                       _find_hdi_contours
 from shapely.geometry import Polygon, MultiPolygon 
-
+from source.autoencoder import AESurrogateModel
 
 
 # _____________________ FOR CALIBRATION    
@@ -26,8 +27,8 @@ def plots(idata, data, title, with_trace=False,
           show_values=True, return_r2=False, 
           ax=None, p0_mode=0,p1_mode=0,network_params=[], pred=False):
     param_names = ['tau','alpha']   
-    with_switch,num_runs,frac,gamma,delta,n_nodes = network_params
-    
+    with_switch,num_runs,frac,gamma,delta,n_nodes,top,koeff = network_params
+
     if pred:
         sim_value = idata.predictions.sim
         switchpoint = idata.constant_data.incidence.shape[0]
@@ -37,8 +38,6 @@ def plots(idata, data, title, with_trace=False,
         sim_value = idata.posterior_predictive.sim
         switchpoint=0
         fin_size = data.shape[0]
-    
-    
     
     posterior = idata.posterior.stack(samples=("draw", "chain"))
     print(p0_mode,p1_mode)
@@ -125,12 +124,27 @@ def plots(idata, data, title, with_trace=False,
                      label=r'Best simulation ($R^2$' +\
                       f' = {all_r[best_idx]:.3f})',
                      zorder=990)
-        
+             
     elif num_runs[0]==0:
-        model = AESurrogateModel(10**5)
-        q = model.simulate(p1_mode,p0_mode)[:data.shape[0]]
+        if top[0]:
+            top_str = 'ba'
+        else:
+            top_str = 'sw'
+        model = AESurrogateModel(10**5,top_str)
+        # alpha, beta
+        q = model.simulate(p1_mode,p0_mode)
+        q[q<0] = 0
+        week_data = pd.Series(q).groupby(pd.Series(q).index // 7).sum().values 
+        diff_w = week_data.shape[0] - fin_size
+        # если меньше -- добавляем нули
+        if diff_w < 0:
+            week_data = [*week_data,*[0]*abs(diff_w)]
+        else:
+            week_data = week_data[:fin_size]
+        q = [i*koeff[0] for i in week_data]
+        
         r2_part = r2_score(data_part, q)
-            
+           
         ax[i].plot(q,
                      color='white', lw=4, ls='-',
                      zorder=980)
@@ -477,7 +491,7 @@ def pred_calib(observed_data, idata,
 def plot_calib(observed_data, idata, 
                true_tau, true_alpha, 
                network_params, pred=False,
-              ax_curves=[], ax_kde=[]):
+              ax_curves=[], ax_kde=[], with_observed=True):
     cmap = mpl.colormaps['viridis']
     hdi_list = [0.2,0.5,0.8,0.9]
     colors_l = cmap(np.linspace(0, 1, len(hdi_list)))
@@ -541,37 +555,40 @@ def plot_calib(observed_data, idata,
     min_x = idata.posterior[param_names[0]].min().round(1)
     min_y = idata.posterior[param_names[1]].min().round(1)
     
-    ax_scatter.set_xticks(np.arange(min_x,1,0.2), 
-                          np.arange(min_x,1,0.2).round(1),
+    
+    ax_scatter.set_xticks(np.arange(min_x,1,1e-2), 
+                          np.arange(min_x,1,1e-2),
                           #fontsize=flabel
                          )
-    ax_scatter.set_yticks(np.arange(min_y,1,0.1),
-                         np.arange(min_y,1,0.1).round(1),
+    ax_scatter.set_yticks(np.arange(min_y,1,1e-2),
+                         np.arange(min_y,1,1e-2),
                           #fontsize=flabel
                          )
-
+    
 
     p0_mode, p1_mode = calc_stat(idata,
                                  param_names)
 
     # i don't know if there can be multiple ref points, so it's easier    
-    ls1 = ax_scatter.scatter(true_tau, true_alpha, alpha=0.9, 
+    if with_observed:
+        ls1 = ax_scatter.scatter(true_tau, true_alpha, alpha=0.9, 
                         color='OrangeRed', label='Observed', 
                      edgecolors='white',
                      s=50, zorder=99)
-
+    else:
+        ls1 = ax_scatter.scatter(p0_mode,p1_mode)
     ls2 = ax_scatter.scatter(p0_mode, p1_mode, alpha=0.9, 
                         color='tab:green', label='Selected', 
                      edgecolors='white',
                      s=50, zorder=99) 
-    ls3 = ax_scatter.scatter(true_tau, true_alpha, zorder=0, s=5,
+    ls3 = ax_scatter.scatter(p0_mode, p1_mode, zorder=0, s=5,
                color=fc, label='Simulation')
     
     ax_scatter.set_xlabel(fancy_names[0], #fontsize=flabel
                          )
     ax_scatter.set_ylabel(fancy_names[1], #fontsize=flabel
                          )
-                          
+    '''                      
     ax_scatter.set_xlim(0, 1)
     ax_scatter.set_ylim(0.5, 1)
     ticks_x = [0.1, 0.3, 0.5, 0.7, 0.9]
@@ -581,7 +598,7 @@ def plot_calib(observed_data, idata,
     ax_scatter.tick_params(axis='both', which='major', labelsize=fontsize)
     ax_scatter.set_xlabel(fancy_names[0], fontsize=1.2*fontsize)
     ax_scatter.set_ylabel(fancy_names[1], fontsize=1.2*fontsize)
-    
+    '''
     legend_elements= []
     for c, val in zip(colors_l[::-1], hdi_list):
         legend_elements.append(mpatches.Patch(color=c,
@@ -593,7 +610,13 @@ def plot_calib(observed_data, idata,
         flabel_p = 12
     else:
         flabel_p = 10
-    ax_scatter.legend(handles=[ls1,ls2,ls3,
+        
+    if with_observed:
+        ax_scatter.legend(handles=[ls1,ls2,ls3,
+                               *legend_elements],
+                     fontsize=10)
+    else:
+        ax_scatter.legend(handles=[ls2,ls3,
                                *legend_elements],
                      fontsize=10)
     ax_scatter.grid()
@@ -605,13 +628,15 @@ def plot_calib(observed_data, idata,
     '''
     ax_up.axvline(p0_mode, ls='-', color='white', lw=3)
     ax_up.axvline(p0_mode, ls='--', color='tab:green')
-    ax_up.axvline(true_tau, ls='-', color='white', lw=3)
-    ax_up.axvline(true_tau, ls='--', color='OrangeRed')
-
+    if with_observed:
+        ax_up.axvline(true_tau, ls='-', color='white', lw=3)
+        ax_up.axvline(true_tau, ls='--', color='OrangeRed')
+    
     ax_right.axhline(p1_mode, ls='-', color='white', lw=3)
     ax_right.axhline(p1_mode, ls='--', color='tab:green')
-    ax_right.axhline(true_alpha, ls='-', color='white', lw=3)
-    ax_right.axhline(true_alpha, ls='--', color='OrangeRed')
+    if with_observed:
+        ax_right.axhline(true_alpha, ls='-', color='white', lw=3)
+        ax_right.axhline(true_alpha, ls='--', color='OrangeRed')
 
     #ax_scatter.set_ylim(min_y*.9,1)
     #ax_scatter.set_xlim(min_x*.9,1)
