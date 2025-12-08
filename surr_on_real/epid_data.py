@@ -81,11 +81,12 @@ class EpidData:
         self.pcr_df = None
         self.returned_df = None
 
-        self.start_time = datetime.strptime(start_time, "%d-%m-%Y")
-        self.end_time = datetime.strptime(end_time, "%d-%m-%Y")
+        #self.start_time = datetime.strptime(start_time, "%d-%m-%Y")
+        #self.end_time = datetime.strptime(end_time, "%d-%m-%Y")
         self.data_folder = path.rstrip("/") + f"{city}/"
 
         self.__read_all_data()
+        #self.__get_time_period()
 
     def __read_all_data(self) -> None:
         """

@@ -150,7 +150,7 @@ def plots(idata, data, title, with_trace=False,
                      zorder=980)
         l1=ax[i].plot(q,
                      color='ForestGreen', lw=2, ls='-',
-                     label=r'Best simulation ($R^2$' +\
+                     label='Best simulation\n'+r'($R^2$' +\
                       f' = {r2_part:.3f})',
                      zorder=990)
     next_c='blue'
@@ -588,17 +588,27 @@ def plot_calib(observed_data, idata,
                          )
     ax_scatter.set_ylabel(fancy_names[1], #fontsize=flabel
                          )
-    '''                      
+    
+    '''
     ax_scatter.set_xlim(0, 1)
-    ax_scatter.set_ylim(0.5, 1)
-    ticks_x = [0.1, 0.3, 0.5, 0.7, 0.9]
-    ticks_y = [0.5, 0.6, 0.7, 0.8, 0.9]
-    ax_scatter.set_xticks(ticks_x, list(map(str, ticks_x)))
+    ax_scatter.set_ylim(0, 1)
+    ticks_x = np.arange(0,1.01,0.1).round(2)
+    ticks_y = np.arange(0,1.01,0.1).round(2)
+    '''
+
+    ticks_x = np.linspace(idata.posterior.tau.min().values*0.95,
+                          idata.posterior.tau.max().values*1.05,
+                          10).round(2)
+    ticks_y = np.linspace(idata.posterior.alpha.min().values*0.95,
+                          idata.posterior.alpha.max().values*1.05,
+                          10).round(2)
+    
+    ax_scatter.set_xticks(ticks_x, list(map(str, ticks_x)), rotation=30)
     ax_scatter.set_yticks(ticks_y, list(map(str, ticks_y)))
     ax_scatter.tick_params(axis='both', which='major', labelsize=fontsize)
     ax_scatter.set_xlabel(fancy_names[0], fontsize=1.2*fontsize)
     ax_scatter.set_ylabel(fancy_names[1], fontsize=1.2*fontsize)
-    '''
+    
     legend_elements= []
     for c, val in zip(colors_l[::-1], hdi_list):
         legend_elements.append(mpatches.Patch(color=c,
