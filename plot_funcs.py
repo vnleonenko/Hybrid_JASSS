@@ -19,6 +19,7 @@ from arviz.stats.density_utils import _fast_kde_2d, \
                                       _find_hdi_contours
 from shapely.geometry import Polygon, MultiPolygon 
 from source.autoencoder import AESurrogateModel
+import surr_on_real.abc_calib as abc_calib
 
 
 # _____________________ FOR CALIBRATION    
@@ -27,7 +28,8 @@ def plots(idata, data, title, with_trace=False,
           show_values=True, return_r2=False, 
           ax=None, p0_mode=0,p1_mode=0,network_params=[], pred=False):
     param_names = ['tau','alpha']   
-    with_switch,num_runs,frac,gamma,delta,n_nodes,top,koeff = network_params
+    with_switch,num_runs,frac,gamma,\
+    delta,n_nodes,top,koeff, shift = network_params
 
     if pred:
         sim_value = idata.predictions.sim
@@ -57,7 +59,7 @@ def plots(idata, data, title, with_trace=False,
    
     
     sim_part = sim_value.stack(samples=("draw", "chain"))
-   
+    
     # posterior predictive lines
     '''
     l0 = ax[i].plot(sim_part[:switchpoint], 
@@ -71,7 +73,19 @@ def plots(idata, data, title, with_trace=False,
         label='Forecast'
     else:
         label='Simulation'
-        
+    
+    # calculating the ratio of satisfactory sims
+    all_r=[]
+    
+    for si in range(sim_part.shape[1]):
+        r2_part = r2_score(data, sim_part[:,si])
+        all_r.append(r2_part)
+    all_r = np.array(all_r)
+    print('shift:', shift)
+    for val in [0.7,0.75,0.8,0.85,0.9]:
+        print('samples with r2>=',val,':', round(all_r[all_r>=val].size/sim_part.shape[1],2)),
+    print('r2 mean:', round(all_r.mean(),3))        
+            
     ax[i].plot(np.arange(switchpoint, fin_size),
             sim_part[switchpoint:fin_size,0], 
                    label=label, alpha=0.5)
@@ -79,7 +93,7 @@ def plots(idata, data, title, with_trace=False,
     
     all_r = []
     all_q = []    
-    print(num_runs)
+
     if (num_runs[0]>0):
         if pred:
             data_appr = data.iloc[:fin_size]
@@ -110,7 +124,7 @@ def plots(idata, data, title, with_trace=False,
                    color='tab:green', alpha=.5, zorder=99,
                    #label='Simulations with selected params'
                           )
-
+        
         best_idx = np.argmax(all_r)        
         ax[i].plot(np.arange(switchpoint,
                                        fin_size),
@@ -126,11 +140,18 @@ def plots(idata, data, title, with_trace=False,
                      zorder=990)
              
     elif num_runs[0]==0:
+        q = abc_calib.surr_sim(0,alpha=p1_mode, beta=p0_mode, 
+                           modeling_duration=[fin_size], 
+                           n_nodes=n_nodes, top=top, 
+                           koeff=koeff, shift=shift,
+             size=None)
+       
+        '''
         if top[0]:
             top_str = 'ba'
         else:
             top_str = 'sw'
-        model = AESurrogateModel(10**5,top_str)
+        model = AESurrogateModel(n_nodes[0],top_str)
         # alpha, beta
         q = model.simulate(p1_mode,p0_mode)
         q[q<0] = 0
@@ -142,7 +163,7 @@ def plots(idata, data, title, with_trace=False,
         else:
             week_data = week_data[:fin_size]
         q = [i*koeff[0] for i in week_data]
-        
+        '''
         r2_part = r2_score(data_part, q)
            
         ax[i].plot(q,
