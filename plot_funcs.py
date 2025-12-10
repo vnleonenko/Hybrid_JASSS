@@ -146,24 +146,7 @@ def plots(idata, data, title, with_trace=False,
                            koeff=koeff, shift=shift,
              size=None)
        
-        '''
-        if top[0]:
-            top_str = 'ba'
-        else:
-            top_str = 'sw'
-        model = AESurrogateModel(n_nodes[0],top_str)
-        # alpha, beta
-        q = model.simulate(p1_mode,p0_mode)
-        q[q<0] = 0
-        week_data = pd.Series(q).groupby(pd.Series(q).index // 7).sum().values 
-        diff_w = week_data.shape[0] - fin_size
-        # если меньше -- добавляем нули
-        if diff_w < 0:
-            week_data = [*week_data,*[0]*abs(diff_w)]
-        else:
-            week_data = week_data[:fin_size]
-        q = [i*koeff[0] for i in week_data]
-        '''
+
         r2_part = r2_score(data_part, q)
            
         ax[i].plot(q,
@@ -250,7 +233,7 @@ def plots(idata, data, title, with_trace=False,
         flabel_p = 10
         
     ax[i].legend(fontsize=flabel_p).set_zorder(9999);
-    
+    ax[i].set_title(f'shift: {shift}')
     #return all_q, all_r
 
     if return_r2:
@@ -678,5 +661,4 @@ def plot_calib(observed_data, idata,
           ax=ax_curves, p0_mode=p0_mode,p1_mode=p1_mode,
           network_params=network_params,
          pred=pred)
-
     plt.tight_layout()

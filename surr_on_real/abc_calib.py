@@ -12,11 +12,11 @@ def surr_sim(rng, alpha, beta, modeling_duration,
     n_nodes =n_nodes[0]
     top =top[0]
     koeff = koeff[0]
-    
     if top:
         top_str = 'ba'
     else:
         top_str = 'sw'
+    
     model = AESurrogateModel(n_nodes, top_str)
     #alpha, beta
     q = model.simulate(alpha,beta)
@@ -37,13 +37,13 @@ def surr_sim(rng, alpha, beta, modeling_duration,
 
 
 def calibr(draws=200, chains = 4, epsilon=500, 
-           shift=[0], incidence=[], koeff = [1]):
+           shift=[0], incidence=[], top=[False], koeff = [1]):
     progressbar = True
 
     gamma = [0.3]
     delta=[0.2]
     n_nodes=[100000]
-    top = [False] #is BA?
+    #top = [False] #is BA?
     #koeff = [int(pop/ n_nodes)]
     modeling_duration = [incidence.shape[0]]
 
